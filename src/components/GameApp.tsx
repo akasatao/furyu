@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { HomeScreen, type HomeStep } from "@/components/HomeScreen";
 import { RevealPhase } from "@/components/RevealPhase";
 import { WaitingLobby } from "@/components/WaitingLobby";
 import { WritingPhase } from "@/components/WritingPhase";
+import { APP_VERSION } from "@/lib/app-version";
 import { modeAllowsSolo } from "@/lib/constants";
 import { getOrCreatePlayerId } from "@/lib/online/player-id";
 import {
@@ -77,6 +78,9 @@ export function GameApp() {
   const [myId, setMyId] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  /** 退場アニメ用に残す表示テキスト */
+  const [toastText, setToastText] = useState("");
+  const [toastExiting, setToastExiting] = useState(false);
   const [localDraft, setLocalDraft] = useState("");
   const [phaseVeil, setPhaseVeil] = useState(0);
   const [phaseVeilMs, setPhaseVeilMs] = useState(PHASE_FADE_MS);
@@ -93,6 +97,41 @@ export function GameApp() {
   useEffect(() => {
     setMyId(getOrCreatePlayerId());
   }, []);
+
+  /** 新しいエラーが来たら表示を開始 */
+  useEffect(() => {
+    if (!errorMessage) return;
+    setToastText(errorMessage);
+    setToastExiting(false);
+  }, [errorMessage]);
+
+  /** エラーが消されたら退場アニメへ */
+  useEffect(() => {
+    if (errorMessage || !toastText || toastExiting) return;
+    setToastExiting(true);
+  }, [errorMessage, toastText, toastExiting]);
+
+  /** 退場アニメの保険（animationend が来ない場合） */
+  useEffect(() => {
+    if (!toastExiting) return;
+    const timer = window.setTimeout(() => {
+      setToastText("");
+      setToastExiting(false);
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [toastExiting]);
+
+  /** エラーは数秒で消す（退場アニメは上の effect が担当） */
+  useEffect(() => {
+    if (!errorMessage) return;
+    const timer = window.setTimeout(() => setErrorMessage(""), 3000);
+    return () => window.clearTimeout(timer);
+  }, [errorMessage]);
+
+  /** 画面が変わったらエラーは残さない */
+  useEffect(() => {
+    setErrorMessage("");
+  }, [phase, homeStep]);
 
   const applySnapshot = useCallback(
     (snapshot: OnlineRoomSnapshot) => {
@@ -142,6 +181,7 @@ export function GameApp() {
   useEffect(() => () => clearSubscription(), [clearSubscription]);
 
   const handleModeChange = useCallback((next: VerseMode) => {
+    setErrorMessage("");
     setMode(next);
     setPlayerCount((prev) => clampPlayerCount(next, prev));
   }, []);
@@ -553,15 +593,45 @@ export function GameApp() {
   const draftForUi =
     turn && turn.writerId === myId ? localDraft : (turn?.draft ?? "");
 
-  return (
-    <div className="relative flex h-dvh flex-1 flex-col overflow-hidden bg-white text-black md:h-auto md:min-h-dvh md:overflow-visible">
-      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:px-6 md:py-10">
-        {errorMessage && (
-          <p className="mx-auto mb-2 w-full max-w-md shrink-0 text-center text-sm underline md:mb-4">
-            {errorMessage}
-          </p>
-        )}
+  const errorToast =
+    toastText && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            role="alert"
+            className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex justify-center px-4 pt-10 md:pt-12"
+          >
+            <p
+              key={toastExiting ? `out-${toastText}` : `in-${toastText}`}
+              className={`max-w-md border-2 border-black bg-white px-4 py-2.5 text-center text-sm tracking-wider shadow-[2px_2px_0_#000] ${
+                toastExiting ? "toast-drop-out" : "toast-drop-in"
+              }`}
+              onAnimationEnd={(event) => {
+                if (
+                  toastExiting &&
+                  event.animationName === "toast-drop-out"
+                ) {
+                  setToastText("");
+                  setToastExiting(false);
+                }
+              }}
+            >
+              {toastText}
+            </p>
+          </div>,
+          document.body,
+        )
+      : null;
 
+  return (
+    <div className="relative flex h-dvh flex-1 flex-col overflow-hidden overflow-x-hidden bg-white text-black md:h-auto md:min-h-dvh md:overflow-visible">
+      {errorToast}
+      <p
+        aria-hidden
+        className="pointer-events-none fixed top-2 right-3 z-[60] text-[10px] tracking-widest text-black/35 md:top-3 md:right-4"
+      >
+        {APP_VERSION}
+      </p>
+      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:px-6 md:py-10">
         {phase === "home" && (
           <HomeScreen
             key={homeStep}

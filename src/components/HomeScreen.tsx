@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   MODE_LABEL,
@@ -68,12 +68,39 @@ export function HomeScreen({
   /** キーボード表示中はコンパクト＋スクロールに切替 */
   const [inputFocused, setInputFocused] = useState(false);
   const lockedRef = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const joinInputRef = useRef<HTMLInputElement>(null);
+  const nicknameInputRef = useRef<HTMLInputElement>(null);
+  const blurTimerRef = useRef<number | null>(null);
+  const viewportHeightRef = useRef(0);
 
   const isLocked = busy || transitioning;
 
+  const endInputMode = useCallback(() => {
+    if (blurTimerRef.current != null) {
+      window.clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    setInputFocused(false);
+    const active = document.activeElement;
+    if (
+      active === joinInputRef.current ||
+      active === nicknameInputRef.current
+    ) {
+      (active as HTMLElement).blur();
+    }
+    rootRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, left: 0 });
+  }, []);
+
   const handleInputFocus = (scrollJoin = false) => {
+    if (blurTimerRef.current != null) {
+      window.clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
     setInputFocused(true);
+    const vv = window.visualViewport;
+    if (vv) viewportHeightRef.current = vv.height;
     if (!scrollJoin) return;
     window.requestAnimationFrame(() => {
       joinInputRef.current?.scrollIntoView({
@@ -84,8 +111,60 @@ export function HomeScreen({
   };
 
   const handleInputBlur = () => {
-    setInputFocused(false);
+    // 雅号↔ルームコード切替では入力モードを維持
+    blurTimerRef.current = window.setTimeout(() => {
+      const active = document.activeElement;
+      const stillEditing =
+        active === joinInputRef.current ||
+        active === nicknameInputRef.current;
+      if (!stillEditing) endInputMode();
+    }, 120);
   };
+
+  /** キーボードが閉じたらフォーカス解除＆定位置へ */
+  useEffect(() => {
+    if (!inputFocused) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    viewportHeightRef.current = vv.height;
+
+    const onViewportResize = () => {
+      const prev = viewportHeightRef.current;
+      const next = vv.height;
+      viewportHeightRef.current = next;
+      // 大きく高くなった＝キーボード閉鎖
+      if (next - prev > 80) {
+        endInputMode();
+      }
+    };
+
+    vv.addEventListener("resize", onViewportResize);
+    return () => vv.removeEventListener("resize", onViewportResize);
+  }, [inputFocused, endInputMode]);
+
+  /** 入力中は横スクロール／横パンを抑止 */
+  useEffect(() => {
+    if (!inputFocused) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflowX;
+    const prevBody = body.style.overflowX;
+    html.style.overflowX = "hidden";
+    body.style.overflowX = "hidden";
+    return () => {
+      html.style.overflowX = prevHtml;
+      body.style.overflowX = prevBody;
+    };
+  }, [inputFocused]);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current != null) {
+        window.clearTimeout(blurTimerRef.current);
+      }
+    };
+  }, []);
 
   const goToStep = async (next: HomeStep) => {
     if (next === step || lockedRef.current) return;
@@ -168,9 +247,10 @@ export function HomeScreen({
 
   return (
     <div
-      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col bg-white md:max-w-lg md:min-h-[36rem] md:overflow-hidden ${
+      ref={rootRef}
+      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-x-hidden bg-white md:max-w-lg md:min-h-[36rem] md:overflow-hidden ${
         inputFocused
-          ? "overflow-y-auto overscroll-contain"
+          ? "overflow-y-auto overscroll-x-none overscroll-y-contain touch-pan-y"
           : "overflow-hidden"
       }`}
     >
@@ -213,6 +293,7 @@ export function HomeScreen({
             <label className="block shrink-0 space-y-1.5 md:space-y-2">
               <span className="text-sm tracking-widest text-black/70">雅号</span>
               <input
+                ref={nicknameInputRef}
                 type="text"
                 value={nickname}
                 maxLength={12}
