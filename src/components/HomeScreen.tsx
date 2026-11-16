@@ -7,6 +7,7 @@ import {
   modeAllowsSolo,
   PLAYER_COUNT_RANGE,
 } from "@/lib/constants";
+import { normalizeRoomCode } from "@/lib/utils";
 import type { VerseMode } from "@/types/game";
 
 export type HomeStep = "mode" | "setup";
@@ -236,7 +237,7 @@ export function HomeScreen({
   };
 
   const handleJoin = () => {
-    const code = joinCode.trim().toUpperCase();
+    const code = normalizeRoomCode(joinCode);
     if (code.length < 4) {
       setJoinError("ルームコードを4文字入力してください");
       return;
@@ -290,20 +291,32 @@ export function HomeScreen({
               <hr className="brush-line mx-auto w-10 md:w-14" />
             </header>
 
-            <label className="block shrink-0 space-y-1.5 md:space-y-2">
-              <span className="text-sm tracking-widest text-black/70">雅号</span>
-              <input
-                ref={nicknameInputRef}
-                type="text"
-                value={nickname}
-                maxLength={12}
-                placeholder="名無しの俳人"
-                onFocus={() => handleInputFocus(false)}
-                onBlur={handleInputBlur}
-                onChange={(e) => onNicknameChange(e.target.value)}
-                className="brush-input w-full px-4 py-2.5 text-base md:py-3"
-              />
-            </label>
+            <form
+              className="block shrink-0 space-y-1.5 md:space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                endInputMode();
+              }}
+            >
+              <label className="block space-y-1.5 md:space-y-2">
+                <span className="text-sm tracking-widest text-black/70">
+                  雅号
+                </span>
+                <input
+                  ref={nicknameInputRef}
+                  type="text"
+                  value={nickname}
+                  maxLength={12}
+                  placeholder="名無しの俳人"
+                  enterKeyHint="done"
+                  autoComplete="nickname"
+                  onFocus={() => handleInputFocus(false)}
+                  onBlur={handleInputBlur}
+                  onChange={(e) => onNicknameChange(e.target.value)}
+                  className="brush-input w-full px-4 py-2.5 text-base md:py-3"
+                />
+              </label>
+            </form>
 
             <section
               className={`brush-box flex shrink-0 flex-col gap-2 p-3 md:flex-none md:gap-3 md:p-4 ${
@@ -366,7 +379,9 @@ export function HomeScreen({
                   spellCheck={false}
                   onFocus={() => handleInputFocus(true)}
                   onBlur={handleInputBlur}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onChange={(e) =>
+                    setJoinCode(normalizeRoomCode(e.target.value))
+                  }
                   className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em]"
                 />
                 <button

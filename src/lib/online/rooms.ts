@@ -4,6 +4,7 @@ import { assignPartIndexes } from "@/lib/roles";
 import { getSupabase } from "@/lib/supabase/client";
 import {
   createBlankPoems,
+  normalizeRoomCode,
   playerColor,
   randomRoomCode,
   uid,
@@ -106,7 +107,7 @@ export async function joinOnlineRoom(options: {
   nickname: string;
 }): Promise<OnlineRoomSnapshot> {
   const supabase = getSupabase();
-  const code = options.code.trim().toUpperCase();
+  const code = normalizeRoomCode(options.code);
 
   const { data: roomData, error: roomError } = await supabase
     .from("rooms")

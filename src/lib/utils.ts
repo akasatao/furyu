@@ -44,6 +44,11 @@ export function randomRoomCode(): string {
   return code;
 }
 
+/** 全角英数字→半角、大文字化（ルームコード照合用） */
+export function normalizeRoomCode(raw: string): string {
+  return raw.normalize("NFKC").trim().toUpperCase();
+}
+
 export function playerColor(index: number): string {
   return PLAYER_COLORS[index % PLAYER_COLORS.length];
 }
