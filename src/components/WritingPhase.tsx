@@ -30,6 +30,7 @@ interface WritingPhaseProps {
   busy?: boolean;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
+  onBack?: () => void;
 }
 
 export function WritingPhase({
@@ -46,6 +47,7 @@ export function WritingPhase({
   busy = false,
   onDraftChange,
   onSubmit,
+  onBack,
 }: WritingPhaseProps) {
   const isShirazu = mode === "shirazu";
   const label = partLabel(mode, stepIndex);
@@ -91,10 +93,34 @@ export function WritingPhase({
   if (isSolo) {
     return (
       <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:flex-none md:gap-6">
+        {onBack && (
+          <div className="flex shrink-0 items-center justify-between gap-2 px-1">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onBack}
+              className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+            >
+              ← 戻る
+            </button>
+            <p className="text-xs tracking-[0.4em] text-black/45">
+              ひとりで詠む
+            </p>
+            <span className="w-12" aria-hidden />
+          </div>
+        )}
+
         <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
-          <p className="text-xs tracking-[0.4em] text-black/45">
-            ひとりで詠む　{MODE_LABEL[mode]}
-          </p>
+          {!onBack && (
+            <p className="text-xs tracking-[0.4em] text-black/45">
+              ひとりで詠む　{MODE_LABEL[mode]}
+            </p>
+          )}
+          {onBack && (
+            <p className="text-xs tracking-[0.35em] text-black/45">
+              {MODE_LABEL[mode]}
+            </p>
+          )}
           <h2 className="text-2xl tracking-[0.2em] md:text-4xl">
             {isShirazu ? "一音を詠む" : label}
           </h2>

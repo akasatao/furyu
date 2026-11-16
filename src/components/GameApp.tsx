@@ -619,6 +619,13 @@ export function GameApp() {
             onSubmit={() => {
               void handleSubmit();
             }}
+            onBack={
+              players.length === 1 && !roomId
+                ? () => {
+                    void handleLobbyBack();
+                  }
+                : undefined
+            }
           />
         )}
 
