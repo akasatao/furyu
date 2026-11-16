@@ -63,6 +63,8 @@ export function HomeScreen({
   const [transitioning, setTransitioning] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
+  /** 日本語IME変換中は正規化しない（英数入力の二重化・崩れ防止） */
+  const [joinComposing, setJoinComposing] = useState(false);
   const [pressedChoice, setPressedChoice] = useState<
     "solo" | "multi" | "join" | VerseMode | null
   >(null);
@@ -371,17 +373,30 @@ export function HomeScreen({
                   ref={joinInputRef}
                   type="text"
                   value={joinCode}
-                  maxLength={6}
+                  maxLength={joinComposing ? 12 : 6}
                   placeholder="A1B2"
                   enterKeyHint="go"
                   autoCapitalize="characters"
                   autoCorrect="off"
                   spellCheck={false}
+                  lang="en"
+                  inputMode="text"
                   onFocus={() => handleInputFocus(true)}
                   onBlur={handleInputBlur}
-                  onChange={(e) =>
-                    setJoinCode(normalizeRoomCode(e.target.value))
-                  }
+                  onCompositionStart={() => setJoinComposing(true)}
+                  onCompositionEnd={(e) => {
+                    setJoinComposing(false);
+                    setJoinCode(normalizeRoomCode(e.currentTarget.value));
+                  }}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const native = e.nativeEvent as InputEvent;
+                    if (joinComposing || native.isComposing) {
+                      setJoinCode(value);
+                      return;
+                    }
+                    setJoinCode(normalizeRoomCode(value));
+                  }}
                   className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em]"
                 />
                 <button

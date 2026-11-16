@@ -172,15 +172,29 @@ function isYoonPair(base: string, small: string): boolean {
   return YOON_SET.has(base + small);
 }
 
+/** 普通のひらがな（小書き以外）。促音の直後に付けられる字 */
+function isPlainHiragana(ch: string): boolean {
+  return (
+    /[ぁ-ん]/.test(ch) &&
+    !/[ぁぃぅぇぉゃゅょゎっ]/.test(ch)
+  );
+}
+
+/** っ＋普通ひらがな（って など）＝二音 */
+function isSokuonCluster(first: string, second: string): boolean {
+  return first === "っ" && isPlainHiragana(second);
+}
+
 /**
- * 入力中の下書きを最大一音ぶんまで残す。
- * ひらがな（拗音可）、漢字一文字、または英字一文字。
+ * 入力中の下書きを最大一単位まで残す。
+ * 一音／拗音／っ＋次の字（って等）／漢字／英字。
  */
 export function clampShirazuDraft(raw: string): string {
   const allowed = toAllowedShirazuChars(raw);
   if (!allowed) return "";
   const chars = [...allowed];
   const first = chars[0] ?? "";
+  const second = chars[1] ?? "";
 
   // 英字・漢字は一文字だけ
   if (isLatinLetter(first) || isKanji(first)) return first;
@@ -188,18 +202,23 @@ export function clampShirazuDraft(raw: string): string {
   // 先頭が小書き（っ以外）なら捨てる
   if (/[ぁぃぅぇぉゃゅょゎ]/.test(first)) return "";
 
+  // っ＋て など（入力中はっだけでも残す）
+  if (first === "っ") {
+    if (second && isPlainHiragana(second)) return first + second;
+    return first;
+  }
+
   if (SOLO_MORA.has(first) || !YOON_BASES.has(first)) {
     return first;
   }
 
-  const second = chars[1];
   if (second && isYoonPair(first, second)) {
     return first + second;
   }
   return first;
 }
 
-/** 提出可能な一音か（ひらがな／拗音／漢字一文字／英字一文字） */
+/** 提出可能な単位か（一音／拗音／って等／漢字／英字） */
 export function isValidShirazuMora(raw: string): boolean {
   const unit = clampShirazuDraft(raw);
   if (!unit) return false;
@@ -211,32 +230,51 @@ export function isValidShirazuMora(raw: string): boolean {
     );
   }
   if (chars.length === 2) {
+    if (isSokuonCluster(chars[0], chars[1])) return true;
     return isYoonPair(chars[0], chars[1]) && moraCountFromKana(unit) === 1;
   }
   return false;
 }
 
-/** 提出用に正規化した一音文字列。不正なら空 */
+/** 提出用に正規化した単位。不正なら空 */
 export function normalizeShirazuMora(raw: string): string {
   const unit = clampShirazuDraft(raw);
   return isValidShirazuMora(unit) ? unit : "";
 }
 
-/** 句に含まれる音数（ひらがな拗音＋漢字＋英字は各1） */
-export function shirazuMoraCount(line: string): number {
+/** 提出単位の音数（って＝2、きゃ＝1） */
+export function shirazuUnitMoraCount(raw: string): number {
+  const unit = normalizeShirazuMora(raw);
+  if (!unit) return 0;
+  return shirazuMoraCount(unit);
+}
+
+/** 正規化済み単位を1音ずつの文字列に分割（てに付くっも分ける） */
+export function splitShirazuUnit(raw: string): string[] {
+  const unit = normalizeShirazuMora(raw);
+  if (!unit) return [];
+  const chars = [...unit];
+  if (chars.length === 2 && isSokuonCluster(chars[0], chars[1])) {
+    return [chars[0], chars[1]];
+  }
+  return [unit];
+}
+
+/** 句を表示用の音単位に分割（きゃ＝1枠、っ／ては各1枠） */
+export function splitShirazuLineIntoMoras(line: string): string[] {
   const chars = [...toAllowedShirazuChars(line)];
+  const units: string[] = [];
   let i = 0;
-  let count = 0;
   while (i < chars.length) {
     const a = chars[i] ?? "";
     const b = chars[i + 1] ?? "";
     if (isLatinLetter(a) || isKanji(a)) {
-      count += 1;
+      units.push(a);
       i += 1;
       continue;
     }
     if (b && isYoonPair(a, b)) {
-      count += 1;
+      units.push(a + b);
       i += 2;
       continue;
     }
@@ -245,11 +283,57 @@ export function shirazuMoraCount(line: string): number {
       continue;
     }
     if (a === "ー" || /[ぁ-ん]/.test(a)) {
-      count += 1;
+      units.push(a);
     }
     i += 1;
   }
-  return count;
+  return units;
+}
+
+/** 句に含まれる音数（ひらがな拗音＋漢字＋英字は各1。っ＋ては2） */
+export function shirazuMoraCount(line: string): number {
+  return splitShirazuLineIntoMoras(line).length;
+}
+
+/**
+ * 五・七・五の空枠を〇で示し、書かれた音は実字で埋める。
+ * 例: 「あいう」＋5 → 「あいう〇〇」
+ */
+export function formatShirazuLineWithSlots(
+  lineText: string,
+  lineTarget: number,
+): string {
+  const filled = splitShirazuLineIntoMoras(lineText);
+  const target = Math.max(0, lineTarget);
+  const slots: string[] = [];
+  for (let i = 0; i < target; i += 1) {
+    slots.push(filled[i] ?? "〇");
+  }
+  // 枠超過分（理論上まれ）も落とさず見せる
+  if (filled.length > target) {
+    slots.push(...filled.slice(target));
+  }
+  return slots.join("");
+}
+
+/** 短冊全体の音数 */
+export function poemMoraCount(poem: {
+  lines: ({ text: string } | null)[];
+}): number {
+  return poem.lines.reduce(
+    (sum, line) => sum + shirazuMoraCount(line?.text ?? ""),
+    0,
+  );
+}
+
+/** 残りの音枠に収まる提出か */
+export function canSubmitShirazuUnit(
+  raw: string,
+  remainingMora: number,
+): boolean {
+  if (!isValidShirazuMora(raw)) return false;
+  const need = shirazuUnitMoraCount(raw);
+  return need > 0 && need <= remainingMora;
 }
 
 const SINGLE_POOL = [

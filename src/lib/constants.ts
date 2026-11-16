@@ -9,7 +9,7 @@ export const MODE_LABEL: Record<VerseMode, string> = {
 export const MODE_PATTERN: Record<VerseMode, string> = {
   haiku: "五・七・五",
   tanka: "五・七・五・七・七",
-  shirazu: "全員で一音ずつ書いて短冊を回す・人数分の俳句",
+  shirazu: "一音／拗音／って などで短冊を回す・人数分の俳句",
 };
 
 export const LINE_COUNT: Record<VerseMode, number> = {
@@ -42,7 +42,7 @@ export const PART_LABELS: Record<VerseMode, string[]> = {
   shirazu: ["上の句", "中の句", "下の句"],
 };
 
-/** 緩めの文字上限（詠み人知らずは常に一文字） */
+/** 緩めの文字上限（リレーで風流は常に一文字） */
 export const PART_LIMITS: Record<VerseMode, number[]> = {
   haiku: [10, 14, 10],
   tanka: [10, 12, 10, 12, 12],

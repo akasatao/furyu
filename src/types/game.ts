@@ -25,6 +25,9 @@ export interface Poem {
   id: string;
   mode: VerseMode;
   lines: (PoemLine | null)[];
+  /** リレー：最初の一音を書いた人（その短冊の主） */
+  ownerId?: string;
+  ownerName?: string;
 }
 
 /** 俳句・短歌：1人ずつ句を書く */

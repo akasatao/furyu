@@ -3,6 +3,7 @@
 import { assignPartIndexes } from "@/lib/roles";
 import { getSupabase } from "@/lib/supabase/client";
 import {
+  assignShirazuOwners,
   createBlankPoems,
   normalizeRoomCode,
   playerColor,
@@ -13,7 +14,12 @@ import {
   applyOnlineSubmit,
   applyShirazuRoundSubmit,
 } from "@/lib/online/submit";
-import { shirazuPoemForSeat } from "@/lib/shirazu";
+import {
+  canSubmitShirazuUnit,
+  poemMoraCount,
+  SHIRAZU_MORA_PER_POEM,
+  shirazuPoemForSeat,
+} from "@/lib/shirazu";
 import type { Player, TurnState, VerseMode } from "@/types/game";
 import { isLineTurn, isShirazuTurn } from "@/types/game";
 import {
@@ -202,7 +208,11 @@ export async function startOnlineGame(options: {
     ...p,
     partIndexes: parts[i] ?? [],
   }));
-  const poems = createBlankPoems(snapshot.room.mode, count, uid("poem"));
+  const blank = createBlankPoems(snapshot.room.mode, count, uid("poem"));
+  const poems =
+    snapshot.room.mode === "shirazu"
+      ? assignShirazuOwners(blank, roster)
+      : blank;
   const turn: TurnState =
     snapshot.room.mode === "shirazu"
       ? { kind: "shirazu", roundIndex: 0, submittedIds: [] }
@@ -321,6 +331,12 @@ async function trySubmitShirazu(
     turn.roundIndex,
     players.length,
   );
+  const hand = room.poems[poemIndex];
+  const filled = hand ? poemMoraCount(hand) : 0;
+  const remaining = SHIRAZU_MORA_PER_POEM - filled;
+  if (remaining > 0 && !canSubmitShirazuUnit(options.draft, remaining)) {
+    throw new Error("その一音は使えません。");
+  }
   const applied = applyShirazuRoundSubmit({
     poems: room.poems,
     turn,

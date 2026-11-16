@@ -44,9 +44,12 @@ export function randomRoomCode(): string {
   return code;
 }
 
-/** 全角英数字→半角、大文字化（ルームコード照合用） */
+/** 全角英数字→半角、大文字化、英数字以外除去（ルームコード照合用） */
 export function normalizeRoomCode(raw: string): string {
-  return raw.normalize("NFKC").trim().toUpperCase();
+  return raw
+    .normalize("NFKC")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
 }
 
 export function playerColor(index: number): string {
@@ -79,7 +82,7 @@ export function createBlankPoem(mode: VerseMode, id: string): Poem {
   };
 }
 
-/** 詠み人知らずは人数分の空白俳句、それ以外は一首 */
+/** リレーで風流は人数分の空白俳句、それ以外は一首 */
 export function createBlankPoems(
   mode: VerseMode,
   playerCount: number,
@@ -91,6 +94,22 @@ export function createBlankPoems(
     );
   }
   return [createBlankPoem(mode, idPrefix)];
+}
+
+/** リレー短冊に初筆者（座席順）を紐づける */
+export function assignShirazuOwners(
+  poems: Poem[],
+  roster: { id: string; name: string }[],
+): Poem[] {
+  return poems.map((poem, i) => {
+    const owner = roster[i];
+    if (!owner) return poem;
+    return {
+      ...poem,
+      ownerId: owner.id,
+      ownerName: owner.name,
+    };
+  });
 }
 
 export function totalSteps(mode: VerseMode, playerCount: number): number {
@@ -111,7 +130,10 @@ export function poemFullText(poem: Poem): string {
 
 export function poemShareText(poem: Poem): string {
   if (poem.mode === "shirazu") {
-    return `${MODE_LABEL.shirazu}\n${poemFullText(poem)}\n— 詠み人知らず\n#風流オンライン`;
+    const credit = poem.ownerName
+      ? `${poem.ownerName}の句`
+      : MODE_LABEL.shirazu;
+    return `${MODE_LABEL.shirazu}\n${poemFullText(poem)}\n— ${credit}\n#風流オンライン`;
   }
   const labels = PART_LABELS[poem.mode];
   const credits = poem.lines
@@ -124,9 +146,12 @@ export function poemShareText(poem: Poem): string {
 export function poemsShareText(poems: Poem[]): string {
   if (poems.length === 1) return poemShareText(poems[0]);
   const body = poems
-    .map((p, i) => `【第${toKanji(i + 1)}首】\n${poemFullText(p)}`)
+    .map((p, i) => {
+      const credit = p.ownerName ? `（${p.ownerName}の句）` : "";
+      return `【第${toKanji(i + 1)}首】${credit}\n${poemFullText(p)}`;
+    })
     .join("\n\n");
-  return `${MODE_LABEL.shirazu}\n${body}\n— 詠み人知らず\n#風流オンライン`;
+  return `${MODE_LABEL.shirazu}\n${body}\n— ${MODE_LABEL.shirazu}\n#風流オンライン`;
 }
 
 export function partLabel(mode: VerseMode, stepIndex: number): string {

@@ -22,8 +22,11 @@ import {
 } from "@/lib/online/rooms";
 import type { OnlineRoomSnapshot } from "@/lib/online/types";
 import {
+  canSubmitShirazuUnit,
   clampShirazuDraft,
   normalizeShirazuMora,
+  poemMoraCount,
+  SHIRAZU_MORA_PER_POEM,
   shirazuPoemForSeat,
 } from "@/lib/shirazu";
 import {
@@ -467,24 +470,44 @@ export function GameApp() {
       return;
     }
 
-    const draft = shirazu
+    let draft = shirazu
       ? normalizeShirazuMora(localDraft)
       : localDraft.trim();
-    if (!draft) return;
+
+    let shirazuPoemIndex = -1;
+    let shirazuSkip = false;
+    if (shirazu && mySeat >= 0) {
+      shirazuPoemIndex = shirazuPoemForSeat(
+        mySeat,
+        turn.roundIndex,
+        players.length,
+      );
+      const hand = poems[shirazuPoemIndex];
+      const filled = hand ? poemMoraCount(hand) : 0;
+      const remaining = SHIRAZU_MORA_PER_POEM - filled;
+      if (remaining <= 0) {
+        shirazuSkip = true;
+        draft = "";
+      } else if (!draft || !canSubmitShirazuUnit(draft, remaining)) {
+        return;
+      }
+    } else if (!draft) {
+      return;
+    }
 
     // 連打防止：同期ロック＋ボタン無効化
     submitLockRef.current = true;
     setBusy(true);
     setLocalDraft("");
     const poemsBefore = poems;
-    if (shirazu && mySeat >= 0) {
-      const poemIndex = shirazuPoemForSeat(
-        mySeat,
-        turn.roundIndex,
-        players.length,
-      );
+    if (shirazu && shirazuPoemIndex >= 0 && !shirazuSkip && draft) {
       setPoems(
-        applyShirazuCharToPoem(poems, poemIndex, turn.roundIndex, draft),
+        applyShirazuCharToPoem(
+          poems,
+          shirazuPoemIndex,
+          turn.roundIndex,
+          draft,
+        ),
       );
     }
     setTurn((prev) => {
