@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { MODE_LABEL, PLAYER_COUNT_RANGE } from "@/lib/constants";
-import { toKanji } from "@/lib/utils";
+import { useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import {
+  MODE_LABEL,
+  modeAllowsSolo,
+  PLAYER_COUNT_RANGE,
+} from "@/lib/constants";
 import type { VerseMode } from "@/types/game";
+
+export type HomeStep = "mode" | "setup";
 
 interface HomeScreenProps {
   nickname: string;
@@ -12,9 +18,31 @@ interface HomeScreenProps {
   playerCount: number;
   onModeChange: (mode: VerseMode) => void;
   onPlayerCountChange: (count: number) => void;
-  onCreateRoom: () => void;
+  onCreateRoom: (
+    count: number,
+    verseMode?: VerseMode,
+  ) => void | Promise<void>;
   onJoinRoom: (code: string) => void;
+  /** ロビーから戻ったときの初期画面 */
+  initialStep?: HomeStep;
   busy?: boolean;
+}
+
+const MODES: VerseMode[] = ["haiku", "tanka", "shirazu"];
+
+/** 白へ溶ける／白から現れる */
+const FADE_MS = 420;
+const WHITE_HOLD_MS = 120;
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 export function HomeScreen({
@@ -26,15 +54,89 @@ export function HomeScreen({
   onPlayerCountChange,
   onCreateRoom,
   onJoinRoom,
+  initialStep = "mode",
   busy = false,
 }: HomeScreenProps) {
+  const [step, setStep] = useState<HomeStep>(initialStep);
+  const [veil, setVeil] = useState(0);
+  const [transitioning, setTransitioning] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
-  const range = PLAYER_COUNT_RANGE[mode];
-  const counts = Array.from(
-    { length: range.max - range.min + 1 },
-    (_, i) => range.min + i,
-  );
+  const [pressedChoice, setPressedChoice] = useState<
+    "solo" | "multi" | "join" | VerseMode | null
+  >(null);
+  const lockedRef = useRef(false);
+
+  const isLocked = busy || transitioning;
+
+  const goToStep = async (next: HomeStep) => {
+    if (next === step || lockedRef.current) return;
+    lockedRef.current = true;
+    flushSync(() => setTransitioning(true));
+
+    const reduce = prefersReducedMotion();
+
+    try {
+      if (!reduce) {
+        flushSync(() => setVeil(1));
+        await sleep(FADE_MS);
+      }
+
+      flushSync(() => setStep(next));
+
+      if (!reduce) {
+        await sleep(WHITE_HOLD_MS);
+        flushSync(() => setVeil(0));
+        await sleep(FADE_MS);
+      }
+    } finally {
+      lockedRef.current = false;
+      setVeil(0);
+      setTransitioning(false);
+    }
+  };
+
+  const handleSelectMode = (next: VerseMode) => {
+    if (isLocked) return;
+    onModeChange(next);
+
+    // リレーで風流は複数人専用 → GameApp 側の白フェードでロビーへ
+    if (!modeAllowsSolo(next)) {
+      const max = PLAYER_COUNT_RANGE[next].max;
+      onPlayerCountChange(max);
+      void onCreateRoom(max, next);
+      return;
+    }
+
+    void goToStep("setup");
+  };
+
+  const handleBackToMode = () => {
+    setPressedChoice(null);
+    void goToStep("mode");
+  };
+
+  const pressChoice = (choice: "solo" | "multi" | "join" | VerseMode) => {
+    if (isLocked) return;
+    setPressedChoice(choice);
+  };
+
+  const releaseChoice = () => {
+    setPressedChoice(null);
+  };
+
+  const handleSolo = () => {
+    if (isLocked) return;
+    onPlayerCountChange(1);
+    void onCreateRoom(1);
+  };
+
+  const handleMulti = () => {
+    if (isLocked) return;
+    const max = PLAYER_COUNT_RANGE[mode].max;
+    onPlayerCountChange(max);
+    void onCreateRoom(max);
+  };
 
   const handleJoin = () => {
     const code = joinCode.trim().toUpperCase();
@@ -47,108 +149,168 @@ export function HomeScreen({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col justify-center gap-3 md:max-w-2xl md:flex-none md:justify-start md:gap-6">
-      <header className="shrink-0 space-y-1.5 text-center md:space-y-3">
-        <hr className="brush-line mx-auto w-10 md:w-14" />
-        <h1 className="text-3xl tracking-[0.2em] md:text-5xl">
-          風流
-          <span className="mt-0.5 block text-base tracking-[0.35em] text-black/55 md:mt-1 md:text-xl">
-            オンライン
-          </span>
-        </h1>
-        <hr className="brush-line mx-auto w-10 md:w-14" />
-      </header>
+    <div className="relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-hidden bg-white md:max-w-lg md:min-h-[36rem]">
+      <div
+        className={`flex min-h-0 flex-1 flex-col ${
+          transitioning ? "pointer-events-none" : ""
+        } ${
+          step === "mode"
+            ? "justify-center gap-3 md:justify-start md:gap-6"
+            : "gap-4"
+        }`}
+      >
+        {step === "mode" ? (
+          <>
+            <header className="shrink-0 space-y-1.5 text-center md:space-y-3">
+              <hr className="brush-line mx-auto w-10 md:w-14" />
+              <h1 className="text-3xl tracking-[0.2em] md:text-5xl">
+                風流
+                <span className="mt-0.5 block text-base tracking-[0.35em] text-black/55 md:mt-1 md:text-xl">
+                  オンライン
+                </span>
+              </h1>
+              <hr className="brush-line mx-auto w-10 md:w-14" />
+            </header>
 
-      <label className="block shrink-0 space-y-1.5 md:space-y-2">
-        <span className="text-sm tracking-widest text-black/70">雅号</span>
-        <input
-          type="text"
-          value={nickname}
-          maxLength={12}
-          placeholder="未入力なら「名無しの俳人」"
-          onChange={(e) => onNicknameChange(e.target.value)}
-          className="brush-input w-full px-4 py-2.5 text-base md:py-3"
-        />
-      </label>
+            <label className="block shrink-0 space-y-1.5 md:space-y-2">
+              <span className="text-sm tracking-widest text-black/70">雅号</span>
+              <input
+                type="text"
+                value={nickname}
+                maxLength={12}
+                placeholder="名無しの俳人"
+                onChange={(e) => onNicknameChange(e.target.value)}
+                className="brush-input w-full px-4 py-2.5 text-base md:py-3"
+              />
+            </label>
 
-      <section className="brush-box shrink-0 space-y-2.5 p-3 md:space-y-3 md:p-4">
-        <p className="text-sm tracking-widest text-black/70">モード</p>
-        <div className="grid grid-cols-3 gap-2">
-          {(["haiku", "tanka", "shirazu"] as VerseMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => onModeChange(m)}
-              className={`brush-btn-outline px-2 py-2.5 text-sm tracking-widest md:px-3 md:py-3 ${
-                mode === m ? "is-on" : ""
-              }`}
-            >
-              <span className="block text-sm md:text-base">{MODE_LABEL[m]}</span>
-            </button>
-          ))}
-        </div>
+            <section className="brush-box flex min-h-0 flex-1 flex-col gap-3 p-3 md:flex-none md:p-4">
+              <p className="shrink-0 text-sm tracking-widest text-black/70">
+                モードを選ぶ
+              </p>
+              <div className="flex min-h-0 flex-1 flex-col justify-center gap-2 md:flex-none">
+                {MODES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => handleSelectMode(m)}
+                    onPointerDown={() => pressChoice(m)}
+                    onPointerUp={releaseChoice}
+                    onPointerCancel={releaseChoice}
+                    onPointerLeave={releaseChoice}
+                    aria-pressed={pressedChoice === m}
+                    className={`brush-btn-outline w-full px-4 py-3.5 text-lg tracking-[0.35em] md:py-4 md:text-xl ${
+                      pressedChoice === m ? "is-pressed" : ""
+                    }`}
+                  >
+                    {MODE_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+            </section>
 
-        <p className="pt-0.5 text-sm tracking-widest text-black/70 md:pt-1">
-          人数
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {counts.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onPlayerCountChange(n)}
-              className={`brush-btn-outline min-w-[3.25rem] flex-1 py-2 text-sm tracking-widest md:py-2.5 ${
-                playerCount === n ? "is-on" : ""
-              }`}
-            >
-              {toKanji(n)}人
-            </button>
-          ))}
-        </div>
-      </section>
+            <div className="brush-box shrink-0 p-3 md:p-4">
+              <p className="mb-2 text-sm tracking-widest text-black/70">
+                ルームコードで入る
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={joinCode}
+                  maxLength={6}
+                  placeholder="A1B2"
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em]"
+                />
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={handleJoin}
+                  onPointerDown={() => pressChoice("join")}
+                  onPointerUp={releaseChoice}
+                  onPointerCancel={releaseChoice}
+                  onPointerLeave={releaseChoice}
+                  aria-pressed={pressedChoice === "join"}
+                  className={`brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest ${
+                    pressedChoice === "join" ? "is-pressed" : ""
+                  }`}
+                >
+                  入室
+                </button>
+              </div>
+              {joinError && (
+                <p className="mt-2 text-xs underline">{joinError}</p>
+              )}
+            </div>
+          </>
+        ) : (
+          /* 一人／複数の確認画面（俳句・短歌）— 本体は画面中央 */
+          <section className="relative flex min-h-0 flex-1 flex-col">
+            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-1 py-1">
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={handleBackToMode}
+                className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+              >
+                ← 戻る
+              </button>
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-2xl">
+                {MODE_LABEL[mode]}
+              </p>
+              <span className="w-12" aria-hidden />
+            </div>
 
-      <div className="flex shrink-0 flex-col gap-3 md:grid md:grid-cols-2 md:items-stretch md:gap-4">
-        <div className="flex flex-col justify-center md:p-4">
-          <p className="mb-2 hidden text-sm tracking-widest text-black/70 md:block">
-            新しい和室を開く
-          </p>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onCreateRoom}
-            className="brush-btn w-full px-4 py-3 text-base tracking-widest md:h-full md:py-3.5"
-          >
-            {busy
-              ? "準備中…"
-              : `部屋を作る（${MODE_LABEL[mode]}・${toKanji(playerCount)}人）`}
-          </button>
-        </div>
-
-        <div className="brush-box p-3 md:p-4">
-          <p className="mb-2 text-sm tracking-widest text-black/70">
-            ルームコードで入る
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={joinCode}
-              maxLength={6}
-              placeholder="例: A3K9"
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em]"
-            />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleJoin}
-              className="brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest"
-            >
-              入室
-            </button>
-          </div>
-          {joinError && <p className="mt-2 text-xs underline">{joinError}</p>}
-        </div>
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-1 py-4">
+              <h2 className="text-center text-3xl tracking-[0.35em] md:text-4xl">
+                どう詠む？
+              </h2>
+              <div className="flex w-full max-w-md flex-col gap-3">
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={handleSolo}
+                  onPointerDown={() => pressChoice("solo")}
+                  onPointerUp={releaseChoice}
+                  onPointerCancel={releaseChoice}
+                  onPointerLeave={releaseChoice}
+                  aria-pressed={pressedChoice === "solo"}
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-6 md:text-3xl ${
+                    pressedChoice === "solo" ? "is-pressed" : ""
+                  }`}
+                >
+                  ひとりで詠む
+                </button>
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={handleMulti}
+                  onPointerDown={() => pressChoice("multi")}
+                  onPointerUp={releaseChoice}
+                  onPointerCancel={releaseChoice}
+                  onPointerLeave={releaseChoice}
+                  aria-pressed={pressedChoice === "multi"}
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-6 md:text-3xl ${
+                    pressedChoice === "multi" ? "is-pressed" : ""
+                  }`}
+                >
+                  みんなで詠む
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
+
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-20 bg-white"
+        style={{
+          opacity: veil,
+          transition: `opacity ${FADE_MS}ms ease-in-out`,
+        }}
+      />
     </div>
   );
 }

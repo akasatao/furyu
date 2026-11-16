@@ -19,15 +19,22 @@ export const LINE_COUNT: Record<VerseMode, number> = {
   shirazu: 3,
 };
 
-/** 俳句 一〜三人、短歌 二〜五人、詠み人知らず 二〜六人 */
+/** 俳句・短歌はソロ可。リレーで風流は複数人専用 */
 export const PLAYER_COUNT_RANGE: Record<
   VerseMode,
   { min: number; max: number }
 > = {
   haiku: { min: 1, max: 3 },
-  tanka: { min: 2, max: 5 },
+  tanka: { min: 1, max: 5 },
   shirazu: { min: 2, max: 6 },
 };
+
+/** オンライン開宴に必要な最小人数 */
+export const ONLINE_MIN_PLAYERS = 2;
+
+export function modeAllowsSolo(mode: VerseMode): boolean {
+  return PLAYER_COUNT_RANGE[mode].min === 1;
+}
 
 export const PART_LABELS: Record<VerseMode, string[]> = {
   haiku: ["上の句", "中の句", "下の句"],

@@ -174,8 +174,8 @@ export async function startOnlineGame(options: {
   if (snapshot.room.phase !== "lobby") {
     return snapshot;
   }
-  if (snapshot.players.length < 1) {
-    throw new Error("連衆がいません。");
+  if (snapshot.players.length < 2) {
+    throw new Error("二人以上揃うまで開宴できません。");
   }
 
   const count = snapshot.players.length;

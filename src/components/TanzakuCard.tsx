@@ -14,15 +14,20 @@ interface TanzakuCardProps {
   anonymous?: boolean;
   /** 画像キャプチャ用：アニメなしで全句表示 */
   still?: boolean;
+  /** false のあいだは短冊枠だけ出し、文字は隠したまま */
+  writing?: boolean;
 }
 
 export function TanzakuCard({
   poem,
   anonymous = false,
   still = false,
+  writing = true,
 }: TanzakuCardProps) {
   const labels = PART_LABELS[poem.mode];
   const showAnonymous = anonymous || poem.mode === "shirazu";
+  /** キャプチャ時は常に全文。それ以外は writing が立つまで文字ノードを出さない */
+  const showText = still || writing;
 
   let delayMs = 0;
   const lineTimings = poem.lines.map((line) => {
@@ -36,41 +41,41 @@ export function TanzakuCard({
   return (
     <article className="tanzaku relative flex flex-col items-center px-3 py-5">
       <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
-      <p className="mb-2 text-[10px] tracking-[0.3em] text-black/45">
+      <p className="mb-2 text-sm tracking-[0.35em] text-black/45 md:text-base">
         {still
           ? "風流オンライン"
           : MODE_LABEL[poem.mode === "shirazu" ? "haiku" : poem.mode]}
       </p>
       <div className="flex min-h-[220px] items-center justify-center py-3">
-        <p
-          className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl]"
-          lang="ja"
-        >
-          {poem.lines.map((line, i) => (
-            <span
-              key={i}
-              className={
-                still
-                  ? i === 0
-                    ? "block"
-                    : "mt-4 block"
-                  : i === 0
-                    ? "tanzaku-line block"
-                    : "tanzaku-line mt-4 block"
-              }
-              style={
-                still
-                  ? undefined
-                  : {
-                      animationDelay: `${lineTimings[i].delayMs}ms`,
-                      animationDuration: `${lineTimings[i].durationMs}ms`,
-                    }
-              }
-            >
-              {line?.text ?? "？"}
-            </span>
-          ))}
-        </p>
+        {showText ? (
+          <p
+            key="writing"
+            className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl]"
+            lang="ja"
+          >
+            {poem.lines.map((line, i) => {
+              const isLast = i === poem.lines.length - 1;
+              const offset =
+                i === 0 ? "" : isLast ? "mt-10" : "mt-4";
+              return (
+                <span
+                  key={i}
+                  className={`${still ? "" : "tanzaku-line "}${offset} block`.trim()}
+                  style={
+                    still
+                      ? undefined
+                      : {
+                          animationDelay: `${lineTimings[i].delayMs}ms`,
+                          animationDuration: `${lineTimings[i].durationMs}ms`,
+                        }
+                  }
+                >
+                  {line?.text ?? "？"}
+                </span>
+              );
+            })}
+          </p>
+        ) : null}
       </div>
       <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-2 text-center text-[10px] leading-relaxed tracking-wider text-black/50">
         {showAnonymous ? (

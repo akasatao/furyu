@@ -50,16 +50,20 @@
     2px 2px 0 #000,
     inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   border-radius: 3px 8px 4px 6px / 5px 3px 7px 4px;
-  transition: transform 0.1s ease;
-}
-
-.brush-btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
+  transition:
+    transform 0.05s ease,
+    box-shadow 0.05s ease;
+  touch-action: manipulation;
 }
 
 .brush-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.brush-btn.is-pressed {
+  transform: translate(2px, 2px);
+  box-shadow: none;
 }
 
 .brush-btn-outline {
@@ -68,11 +72,21 @@
   border: 2px solid #000;
   border-radius: 3px 8px 4px 6px / 5px 3px 7px 4px;
   box-shadow: 2px 2px 0 #000;
+  transition:
+    transform 0.05s ease,
+    box-shadow 0.05s ease;
+  touch-action: manipulation;
 }
 
 .brush-btn-outline.is-on {
   background: #000;
   color: #fff;
+}
+
+/* クリック／タップ長押し中だけ沈む */
+.brush-btn-outline.is-pressed {
+  transform: translate(2px, 2px);
+  box-shadow: none;
 }
 
 .brush-input {
@@ -126,4 +140,5 @@
     animation: none;
   }
 }
+
 

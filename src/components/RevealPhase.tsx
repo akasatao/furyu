@@ -12,6 +12,9 @@ interface RevealPhaseProps {
   onRematch: () => void;
   onHome: () => void;
   canRematch?: boolean;
+  isSolo?: boolean;
+  /** false のあいだは短冊枠のみ。true になってから文字の書き出し開始 */
+  revealReady?: boolean;
 }
 
 export function RevealPhase({
@@ -19,6 +22,8 @@ export function RevealPhase({
   onRematch,
   onHome,
   canRematch = true,
+  isSolo = false,
+  revealReady = false,
 }: RevealPhaseProps) {
   const isShirazu = poems[0]?.mode === "shirazu";
   const captureRef = useRef<HTMLDivElement>(null);
@@ -79,7 +84,11 @@ export function RevealPhase({
                 第{toKanji(i + 1)}首
               </p>
             )}
-            <TanzakuCard poem={poem} anonymous={isShirazu} />
+            <TanzakuCard
+              poem={poem}
+              anonymous={isShirazu}
+              writing={revealReady}
+            />
           </div>
         ))}
       </div>
@@ -117,7 +126,7 @@ export function RevealPhase({
             onClick={onRematch}
             className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-3.5"
           >
-            再び宴を開く（もう一度）
+            {isSolo ? "もう一度詠む" : "再び宴を開く（もう一度）"}
           </button>
         ) : (
           <p className="py-3 text-center text-sm tracking-widest text-black/45">
@@ -129,7 +138,7 @@ export function RevealPhase({
           onClick={onHome}
           className="brush-btn-outline w-full px-4 py-3 text-sm tracking-widest"
         >
-          玄関へ戻る
+          {isSolo ? "ホームへ戻る" : "玄関へ戻る"}
         </button>
         <button
           type="button"
