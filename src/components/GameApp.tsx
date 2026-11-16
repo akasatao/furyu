@@ -282,10 +282,10 @@ export function GameApp() {
     turn && turn.writerId === myId ? localDraft : (turn?.draft ?? "");
 
   return (
-    <div className="relative min-h-full flex-1 overflow-hidden bg-white text-black">
-      <main className="relative z-10 mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-8 sm:px-6 sm:py-10">
+    <div className="relative flex h-dvh flex-1 flex-col overflow-hidden bg-white text-black md:h-auto md:min-h-dvh md:overflow-visible">
+      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:px-6 md:py-10">
         {errorMessage && (
-          <p className="mx-auto mb-4 w-full max-w-md text-center text-sm underline">
+          <p className="mx-auto mb-2 w-full max-w-md shrink-0 text-center text-sm underline md:mb-4">
             {errorMessage}
           </p>
         )}

@@ -29,10 +29,10 @@ export function WaitingLobby({
   onLeave,
 }: WaitingLobbyProps) {
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-5">
-      <header className="space-y-2 text-center">
+    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col gap-3 md:flex-none md:gap-5">
+      <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
         <p className="text-sm tracking-[0.3em] text-black/50">待機の間</p>
-        <h2 className="text-3xl tracking-widest">和室 {roomCode}</h2>
+        <h2 className="text-2xl tracking-widest md:text-3xl">和室 {roomCode}</h2>
         <p className="text-sm tracking-wider text-black/55">
           {MODE_LABEL[mode]}（{MODE_PATTERN[mode]}）・{toKanji(players.length)}
           ／{toKanji(maxPlayers)}人
@@ -42,11 +42,11 @@ export function WaitingLobby({
         </p>
       </header>
 
-      <section className="brush-box p-4">
-        <h3 className="mb-3 border-b-2 border-black pb-2 text-sm tracking-widest text-black/70">
+      <section className="brush-box flex min-h-0 flex-1 flex-col p-3 md:flex-none md:overflow-visible md:p-4">
+        <h3 className="mb-2 shrink-0 border-b-2 border-black pb-2 text-sm tracking-widest text-black/70 md:mb-3">
           連衆と担当
         </h3>
-        <ul className="space-y-2">
+        <ul className="min-h-0 space-y-2 overflow-y-auto md:overflow-visible">
           {players.map((p) => (
             <li
               key={p.id}
@@ -80,7 +80,7 @@ export function WaitingLobby({
         type="button"
         disabled={!isHost || players.length < 1 || busy}
         onClick={onStart}
-        className="brush-btn w-full px-4 py-3.5 text-base tracking-[0.25em]"
+        className="brush-btn w-full shrink-0 px-4 py-3 text-base tracking-[0.25em] md:py-3.5"
       >
         {!isHost ? "亭主の開宴を待っています" : busy ? "開宴中…" : "開宴"}
       </button>
@@ -89,7 +89,7 @@ export function WaitingLobby({
         type="button"
         disabled={busy}
         onClick={onLeave}
-        className="text-sm tracking-widest text-black/50 underline-offset-4 hover:underline"
+        className="shrink-0 text-sm tracking-widest text-black/50 underline-offset-4 hover:underline"
       >
         和室を出る
       </button>

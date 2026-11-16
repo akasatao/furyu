@@ -55,10 +55,10 @@ export function RevealPhase({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-5">
-      <header className="space-y-2 text-center">
+    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col items-center gap-3 md:flex-none md:gap-5">
+      <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
         <p className="text-xs tracking-[0.35em] text-black/50">披露</p>
-        <h2 className="text-2xl tracking-widest sm:text-3xl">
+        <h2 className="text-xl tracking-widest md:text-3xl">
           {isShirazu
             ? `${MODE_LABEL.shirazu}・${toKanji(poems.length)}首が完成`
             : `${MODE_LABEL[poems[0].mode]}が完成`}
@@ -66,14 +66,14 @@ export function RevealPhase({
       </header>
 
       <div
-        className={`flex w-full ${
+        className={`flex min-h-0 w-full flex-1 overflow-y-auto md:flex-none md:overflow-visible ${
           poems.length > 1
-            ? "flex-col items-center gap-6"
+            ? "flex-col items-center gap-4 md:gap-6"
             : "max-w-[15rem] justify-center"
         }`}
       >
         {poems.map((poem, i) => (
-          <div key={poem.id} className="w-full max-w-[15rem]">
+          <div key={poem.id} className="w-full max-w-[15rem] shrink-0">
             {isShirazu && poems.length > 1 && (
               <p className="mb-2 text-center text-xs tracking-[0.3em] text-black/45">
                 第{toKanji(i + 1)}首
@@ -110,12 +110,12 @@ export function RevealPhase({
         </div>
       </div>
 
-      <div className="flex w-full flex-col gap-2">
+      <div className="flex w-full shrink-0 flex-col gap-2">
         {canRematch ? (
           <button
             type="button"
             onClick={onRematch}
-            className="brush-btn w-full px-4 py-3.5 text-base tracking-[0.25em]"
+            className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-3.5"
           >
             再び宴を開く（もう一度）
           </button>
