@@ -6,6 +6,7 @@ import {
   canSubmitShirazuUnit,
   clampShirazuDraft,
   formatShirazuLineWithSlots,
+  locateShirazuMora,
   poemMoraCount,
   SHIRAZU_LINE_TARGETS,
   SHIRAZU_MORA_PER_POEM,
@@ -14,6 +15,8 @@ import {
 } from "@/lib/shirazu";
 import { toKanji } from "@/lib/utils";
 import type { Poem } from "@/types/game";
+
+const LINE_NAMES = ["上の句", "中の句", "下の句"] as const;
 
 interface ShirazuWritingPhaseProps {
   poem: Poem;
@@ -42,8 +45,8 @@ export function ShirazuWritingPhase({
   const [composing, setComposing] = useState(false);
   const [localDraft, setLocalDraft] = useState(draft);
   const [inputFocused, setInputFocused] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const tanzakuRef = useRef<HTMLElement>(null);
   const viewportHeightRef = useRef(0);
   const filled = poemMoraCount(poem);
   const remaining = Math.max(0, SHIRAZU_MORA_PER_POEM - filled);
@@ -52,13 +55,26 @@ export function ShirazuWritingPhase({
     filled < SHIRAZU_MORA_PER_POEM
       ? shirazuRoundProgressLabel(filled)
       : "完成";
+  const partHeading =
+    filled < SHIRAZU_MORA_PER_POEM
+      ? (LINE_NAMES[locateShirazuMora(filled).lineIndex] ?? "上の句")
+      : "短冊は埋まりました";
   const unitMora = shirazuUnitMoraCount(draft);
   const finishesPoem = !complete && unitMora > 0 && unitMora >= remaining;
   const ownerLabel = poem.ownerName ? `${poem.ownerName}の句` : null;
-  const compact = inputFocused;
+  /** スマホ＋キーボード時だけ横並びコンパクト表示 */
+  const compact = inputFocused && isNarrow;
 
   const endInputMode = useCallback(() => {
     setInputFocused(false);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
 
   useEffect(() => {
@@ -121,117 +137,114 @@ export function ShirazuWritingPhase({
     setInputFocused(true);
     const vv = window.visualViewport;
     if (vv) viewportHeightRef.current = vv.height;
-    window.requestAnimationFrame(() => {
-      tanzakuRef.current?.scrollIntoView({
-        block: "nearest",
-        behavior: "smooth",
-      });
-    });
   };
+
+  const poemLines = poem.lines.map((line, i) => {
+    const target = SHIRAZU_LINE_TARGETS[i] ?? 5;
+    return {
+      name: LINE_NAMES[i] ?? `${toKanji(i + 1)}句`,
+      text: formatShirazuLineWithSlots(line?.text ?? "", target),
+    };
+  });
 
   return (
     <div
       className={`mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col md:flex-none ${
-        compact ? "gap-1.5 overflow-hidden" : "gap-3 overflow-x-hidden md:gap-5"
+        compact ? "gap-2 overflow-hidden" : "gap-3 overflow-x-hidden md:gap-5"
       }`}
     >
       <header
         className={`shrink-0 text-center ${
-          compact
-            ? "space-y-0 md:space-y-1"
-            : "space-y-0.5 md:space-y-1"
+          compact ? "space-y-0" : "space-y-0.5 md:space-y-1"
         }`}
       >
         <p
           className={`tracking-[0.35em] text-black/55 ${
-            compact ? "text-[9px] md:text-xs" : "text-[10px] md:text-xs"
+            compact ? "text-[9px]" : "text-[10px] md:text-xs"
           }`}
         >
           {MODE_LABEL.shirazu}　{toKanji(filled)}／
           {toKanji(SHIRAZU_MORA_PER_POEM)}音
+          {compact ? `　${progressLabel}` : ""}
         </p>
         {!compact && (
           <>
             <h2 className="text-xl tracking-widest md:text-3xl">
-              {complete ? "短冊は埋まりました" : "一音を詠む"}
+              {partHeading}
             </h2>
             <p className="text-[10px] tracking-[0.15em] text-black/50 md:text-xs">
               {progressLabel}
             </p>
           </>
         )}
-        {compact && (
-          <p className="text-[10px] tracking-widest text-black/50">
-            {progressLabel}
-          </p>
-        )}
       </header>
 
       <div
         className={`flex min-h-0 flex-1 flex-col items-center overscroll-contain ${
           compact
-            ? "justify-start gap-2 overflow-hidden"
+            ? "justify-between gap-2 overflow-hidden"
             : "justify-start gap-4 overflow-y-auto md:justify-center"
         }`}
       >
-        <article
-          ref={tanzakuRef}
-          className={`tanzaku relative flex w-full flex-col items-center px-3 ${
-            compact
-              ? "max-h-[42vh] max-w-[11rem] overflow-hidden py-2.5 md:max-h-none md:max-w-[14rem] md:py-5"
-              : "max-w-[14rem] py-5"
-          }`}
-        >
-          <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
-          {ownerLabel ? (
-            <p className="absolute top-2 right-2 max-w-[6.5rem] text-right text-[10px] leading-snug tracking-wider text-black/55">
-              {ownerLabel}
-            </p>
-          ) : null}
-          <p
-            className={`mb-1 tracking-[0.35em] text-black/45 ${
-              compact ? "text-xs" : "mb-2 text-sm"
-            }`}
-          >
-            俳句
-          </p>
-          <div
-            className={`flex items-center justify-center ${
-              compact ? "min-h-0 flex-1 py-1" : "min-h-[220px] py-3"
-            }`}
-          >
-            <p
-              className={`leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] ${
-                compact ? "text-[1.05rem]" : "text-[1.35rem]"
-              }`}
-              lang="ja"
-            >
-              {poem.lines.map((line, i) => {
-                const isLast = i === poem.lines.length - 1;
-                const offset =
-                  i === 0 ? "" : isLast ? (compact ? "mt-6" : "mt-10") : "mt-4";
-                const target = SHIRAZU_LINE_TARGETS[i] ?? 5;
-                const text = formatShirazuLineWithSlots(
-                  line?.text ?? "",
-                  target,
-                );
-                return (
-                  <span
-                    key={i}
-                    className={`${offset} block min-h-[1.5em]`.trim()}
-                  >
-                    {text}
+        {compact ? (
+          <section className="brush-box w-full shrink-0 px-3 py-2.5">
+            {ownerLabel && (
+              <p className="mb-2 text-center text-[10px] tracking-widest text-black/55">
+                {ownerLabel}
+              </p>
+            )}
+            <ul className="space-y-1.5">
+              {poemLines.map((line) => (
+                <li
+                  key={line.name}
+                  className="flex items-baseline gap-2"
+                >
+                  <span className="w-10 shrink-0 text-[10px] tracking-widest text-black/40">
+                    {line.name}
                   </span>
-                );
-              })}
+                  <span
+                    className="min-w-0 flex-1 text-lg tracking-[0.2em]"
+                    lang="ja"
+                  >
+                    {line.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : (
+          <article className="tanzaku relative flex w-full max-w-[14rem] flex-col items-center px-3 py-5">
+            <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
+            <p className="mb-1 w-full text-center text-[10px] tracking-widest text-black/55">
+              {ownerLabel ?? "俳句"}
             </p>
-          </div>
-          <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-1.5 text-center text-[10px] leading-relaxed tracking-wider text-black/50">
-            <span className="block">
-              {ownerLabel ?? MODE_LABEL.shirazu}
-            </span>
-          </p>
-        </article>
+            <div className="flex min-h-[220px] items-center justify-center py-3">
+              <p
+                className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl]"
+                lang="ja"
+              >
+                {poemLines.map((line, i) => {
+                  const isLast = i === poemLines.length - 1;
+                  const offset =
+                    i === 0 ? "" : isLast ? "mt-10" : "mt-4";
+                  return (
+                    <span
+                      key={line.name}
+                      className={`${offset} block min-h-[1.5em]`.trim()}
+                    >
+                      {line.text}
+                    </span>
+                  );
+                })}
+              </p>
+            </div>
+            <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-1.5 text-center text-[10px] leading-relaxed tracking-wider text-black/50">
+              <span className="block">
+                {ownerLabel ?? MODE_LABEL.shirazu}
+              </span>
+            </p>
+          </article>
+        )}
 
         {hasSubmitted ? (
           <section
@@ -261,7 +274,7 @@ export function ShirazuWritingPhase({
             </button>
           </div>
         ) : (
-          <div className="w-full shrink-0 space-y-2 pb-2">
+          <div className="w-full shrink-0 space-y-2 pb-1">
             {!compact && (
               <label
                 htmlFor="shirazu-mora-input"
@@ -307,9 +320,7 @@ export function ShirazuWritingPhase({
                 if (e.key === "Enter" && canSubmit) onSubmit();
               }}
               className={`brush-input w-full px-4 text-center tracking-[0.5em] ${
-                compact
-                  ? "py-2.5 text-2xl"
-                  : "py-3 text-3xl md:py-3.5"
+                compact ? "py-2 text-2xl" : "py-3 text-3xl md:py-3.5"
               }`}
               autoFocus
             />
@@ -318,7 +329,7 @@ export function ShirazuWritingPhase({
               disabled={!canSubmit}
               onClick={onSubmit}
               className={`brush-btn w-full px-4 tracking-[0.25em] ${
-                compact ? "py-2.5 text-sm" : "py-3 text-base"
+                compact ? "py-2 text-sm" : "py-3 text-base"
               }`}
             >
               {submitLabel}

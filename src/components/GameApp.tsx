@@ -702,7 +702,40 @@ export function GameApp() {
       : null;
 
   return (
-    <div className="relative flex h-dvh flex-1 flex-col overflow-hidden overflow-x-hidden bg-white text-black md:h-auto md:min-h-dvh md:overflow-visible">
+    <div
+      className="relative flex h-dvh flex-1 flex-col overflow-hidden overflow-x-hidden bg-white text-black select-none md:h-auto md:min-h-dvh md:overflow-visible"
+      onCopy={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement
+        ) {
+          return;
+        }
+        e.preventDefault();
+      }}
+      onCut={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement
+        ) {
+          return;
+        }
+        e.preventDefault();
+      }}
+      onSelectCapture={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement
+        ) {
+          return;
+        }
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+      }}
+    >
       {errorToast}
       <p
         aria-hidden

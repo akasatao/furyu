@@ -16,6 +16,22 @@
     color: #000000;
     font-family: "Yuji Syuku", "Hiragino Mincho ProN", "Yu Mincho", serif;
   }
+
+  /* ゲーム内テキストの選択・コピー・長押しを抑止（入力欄は除く） */
+  *,
+  *::before,
+  *::after {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none;
+  }
+
+  input,
+  textarea {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    -webkit-touch-callout: default;
+  }
 }
 
 @keyframes toast-drop-in {
