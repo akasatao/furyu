@@ -1,0 +1,127 @@
+@import "tailwindcss";
+@import "@fontsource/yuji-syuku/japanese-400.css";
+@import "@fontsource/yuji-syuku/latin-400.css";
+
+@theme inline {
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --font-sans: "Yuji Syuku", serif;
+  --font-serif: "Yuji Syuku", serif;
+}
+
+@layer base {
+  html,
+  body {
+    background: #ffffff;
+    color: #000000;
+    font-family: "Yuji Syuku", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  }
+}
+
+/* 筆で囲った枠（SVGの墨線） */
+.brush-box {
+  position: relative;
+  background: #ffffff;
+  isolation: isolate;
+}
+
+.brush-box::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Crect x='3' y='3' width='calc(100%25 - 6px)' height='calc(100%25 - 6px)' fill='none' stroke='%23000' stroke-width='3' stroke-linejoin='round' pathLength='100' stroke-dasharray='0 0' /%3E%3Cpath d='M6,8 Q20,2 40,6 T80,5 T120,8' fill='none' stroke='%23000' stroke-width='2.5' opacity='0'/%3E%3C/svg%3E");
+  border: 2.5px solid #000;
+  border-radius: 2px 6px 3px 5px / 4px 2px 5px 3px;
+  box-shadow:
+    1px 0 0 #000,
+    0 1px 0 #000,
+    -1px 0 0 rgba(0, 0, 0, 0.35),
+    0 -1px 0 rgba(0, 0, 0, 0.25);
+  transform: rotate(-0.2deg);
+}
+
+.brush-btn {
+  background: #000;
+  color: #fff;
+  border: none;
+  box-shadow:
+    2px 2px 0 #000,
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  border-radius: 3px 8px 4px 6px / 5px 3px 7px 4px;
+  transition: transform 0.1s ease;
+}
+
+.brush-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+}
+
+.brush-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.brush-btn-outline {
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 3px 8px 4px 6px / 5px 3px 7px 4px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.brush-btn-outline.is-on {
+  background: #000;
+  color: #fff;
+}
+
+.brush-input {
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 2px 5px 3px 4px / 4px 2px 5px 3px;
+  outline: none;
+}
+
+.brush-input:focus {
+  box-shadow: 2px 2px 0 #000;
+}
+
+.brush-input::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.brush-line {
+  height: 2px;
+  background: #000;
+  border: none;
+  border-radius: 1px;
+  transform: rotate(-0.5deg);
+}
+
+.tanzaku {
+  background: #fff;
+  border: 2.5px solid #000;
+  border-radius: 2px 6px 3px 5px / 5px 2px 6px 3px;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.tanzaku-line {
+  animation: tanzaku-write-down 0.8s ease-out both;
+}
+
+@keyframes tanzaku-write-down {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tanzaku-line {
+    animation: none;
+  }
+}
+
