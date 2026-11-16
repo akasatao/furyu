@@ -9,7 +9,10 @@ interface WaitingLobbyProps {
   roomCode: string;
   mode: VerseMode;
   players: Player[];
+  myId: string;
+  maxPlayers: number;
   isHost: boolean;
+  busy?: boolean;
   onStart: () => void;
   onLeave: () => void;
 }
@@ -18,7 +21,10 @@ export function WaitingLobby({
   roomCode,
   mode,
   players,
+  myId,
+  maxPlayers,
   isHost,
+  busy = false,
   onStart,
   onLeave,
 }: WaitingLobbyProps) {
@@ -28,7 +34,11 @@ export function WaitingLobby({
         <p className="text-sm tracking-[0.3em] text-black/50">待機の間</p>
         <h2 className="text-3xl tracking-widest">和室 {roomCode}</h2>
         <p className="text-sm tracking-wider text-black/55">
-          {MODE_LABEL[mode]}（{MODE_PATTERN[mode]}）・{toKanji(players.length)}人
+          {MODE_LABEL[mode]}（{MODE_PATTERN[mode]}）・{toKanji(players.length)}
+          ／{toKanji(maxPlayers)}人
+        </p>
+        <p className="text-xs tracking-wider text-black/45">
+          コードを共有して連衆を待っています
         </p>
       </header>
 
@@ -55,8 +65,10 @@ export function WaitingLobby({
                   )}
                 </p>
                 <p className="text-xs text-black/45">
-                  {describeParts(mode, p.partIndexes)}
-                  （あなた）
+                  {p.partIndexes.length > 0
+                    ? describeParts(mode, p.partIndexes)
+                    : "担当は開宴後に決まります"}
+                  {p.id === myId ? "（あなた）" : ""}
                 </p>
               </div>
             </li>
@@ -66,15 +78,16 @@ export function WaitingLobby({
 
       <button
         type="button"
-        disabled={!isHost || players.length < 1}
+        disabled={!isHost || players.length < 1 || busy}
         onClick={onStart}
         className="brush-btn w-full px-4 py-3.5 text-base tracking-[0.25em]"
       >
-        開宴
+        {!isHost ? "亭主の開宴を待っています" : busy ? "開宴中…" : "開宴"}
       </button>
 
       <button
         type="button"
+        disabled={busy}
         onClick={onLeave}
         className="text-sm tracking-widest text-black/50 underline-offset-4 hover:underline"
       >

@@ -107,7 +107,9 @@
 }
 
 .tanzaku-line {
-  animation: tanzaku-write-down 0.8s ease-out both;
+  animation-name: tanzaku-write-down;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
 }
 
 @keyframes tanzaku-write-down {

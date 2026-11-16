@@ -37,7 +37,7 @@ export const PART_LABELS: Record<VerseMode, string[]> = {
 
 /** 緩めの文字上限（詠み人知らずは常に一文字） */
 export const PART_LIMITS: Record<VerseMode, number[]> = {
-  haiku: [10, 12, 10],
+  haiku: [10, 14, 10],
   tanka: [10, 12, 10, 12, 12],
   shirazu: [1, 1, 1],
 };

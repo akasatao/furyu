@@ -14,6 +14,7 @@ interface HomeScreenProps {
   onPlayerCountChange: (count: number) => void;
   onCreateRoom: () => void;
   onJoinRoom: (code: string) => void;
+  busy?: boolean;
 }
 
 export function HomeScreen({
@@ -25,6 +26,7 @@ export function HomeScreen({
   onPlayerCountChange,
   onCreateRoom,
   onJoinRoom,
+  busy = false,
 }: HomeScreenProps) {
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
@@ -107,10 +109,13 @@ export function HomeScreen({
 
       <button
         type="button"
+        disabled={busy}
         onClick={onCreateRoom}
         className="brush-btn w-full px-4 py-3.5 text-base tracking-widest"
       >
-        部屋を作る（{MODE_LABEL[mode]}・{toKanji(playerCount)}人）
+        {busy
+          ? "準備中…"
+          : `部屋を作る（${MODE_LABEL[mode]}・${toKanji(playerCount)}人）`}
       </button>
 
       <div className="brush-box p-4">
@@ -128,6 +133,7 @@ export function HomeScreen({
           />
           <button
             type="button"
+            disabled={busy}
             onClick={handleJoin}
             className="brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest"
           >

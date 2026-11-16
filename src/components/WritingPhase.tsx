@@ -8,7 +8,6 @@ import {
   locateShirazuStep,
 } from "@/lib/shirazu";
 import {
-  charCount,
   clampText,
   partLabel,
   partLimit,
@@ -60,11 +59,6 @@ export function WritingPhase({
   }, [draft, composing]);
 
   const displayDraft = isShirazu ? localDraft : draft;
-  const count = isShirazu
-    ? isValidShirazuMora(draft)
-      ? 1
-      : 0
-    : charCount(draft);
   const canSubmit = isShirazu
     ? !composing && isValidShirazuMora(draft)
     : Boolean(draft.trim());
@@ -144,16 +138,9 @@ export function WritingPhase({
         </section>
       ) : (
         <div className="space-y-2">
-          <div className="flex items-end justify-between">
-            <label htmlFor="line-input" className="text-sm tracking-widest text-black/70">
-              {isShirazu ? "あなたの一音" : `あなたの${label}`}
-            </label>
-            <span className="text-sm tabular-nums tracking-wider text-black/45">
-              {isShirazu
-                ? `${toKanji(count)}／${toKanji(limit)}音`
-                : `${toKanji(count)}／${toKanji(limit)}`}
-            </span>
-          </div>
+          <label htmlFor="line-input" className="text-sm tracking-widest text-black/70">
+            {isShirazu ? "あなたの一音" : `あなたの${label}`}
+          </label>
           <input
             id="line-input"
             type="text"
