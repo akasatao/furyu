@@ -27,7 +27,8 @@ export function writerForStep(players: Player[], stepIndex: number): Player {
 
 export function describeParts(mode: VerseMode, indexes: number[]): string {
   if (mode === "shirazu") {
-    return `一音担当×${toKanji(indexes.length)}回`;
+    void indexes;
+    return "短冊を回して一音ずつ";
   }
   const labels = PART_LABELS[mode];
   return indexes.map((i) => labels[i] ?? `${toKanji(i + 1)}句`).join("・");

@@ -9,8 +9,13 @@ import {
   randomRoomCode,
   uid,
 } from "@/lib/utils";
+import {
+  applyOnlineSubmit,
+  applyShirazuRoundSubmit,
+} from "@/lib/online/submit";
+import { shirazuPoemForSeat } from "@/lib/shirazu";
 import type { Player, TurnState, VerseMode } from "@/types/game";
-import { applyOnlineSubmit } from "@/lib/online/submit";
+import { isLineTurn, isShirazuTurn } from "@/types/game";
 import {
   rowToPlayer,
   type OnlineRoomSnapshot,
@@ -198,13 +203,16 @@ export async function startOnlineGame(options: {
     partIndexes: parts[i] ?? [],
   }));
   const poems = createBlankPoems(snapshot.room.mode, count, uid("poem"));
-  const firstWriter = roster.find((p) => p.partIndexes.includes(0)) ?? roster[0];
-  const turn: TurnState = {
-    stepIndex: 0,
-    writerId: firstWriter.id,
-    draft: "",
-    status: "idle",
-  };
+  const turn: TurnState =
+    snapshot.room.mode === "shirazu"
+      ? { kind: "shirazu", roundIndex: 0, submittedIds: [] }
+      : {
+          stepIndex: 0,
+          writerId:
+            (roster.find((p) => p.partIndexes.includes(0)) ?? roster[0]).id,
+          draft: "",
+          status: "idle",
+        };
 
   const { error: roomError } = await supabase
     .from("rooms")
@@ -221,53 +229,124 @@ export async function startOnlineGame(options: {
   return loadRoomSnapshot(options.roomId);
 }
 
+const SUBMIT_MAX_RETRIES = 8;
+
 export async function submitOnlineTurn(options: {
   roomId: string;
   playerId: string;
   draft: string;
 }): Promise<OnlineRoomSnapshot> {
-  const snapshot = await loadRoomSnapshot(options.roomId);
+  for (let attempt = 0; attempt < SUBMIT_MAX_RETRIES; attempt += 1) {
+    const snapshot = await loadRoomSnapshot(options.roomId);
+    const { room, players } = snapshot;
+    if (room.phase !== "writing" || !room.turn) {
+      throw new Error("いまは提出できません。");
+    }
+
+    if (isShirazuTurn(room.turn)) {
+      const result = await trySubmitShirazu(snapshot, options);
+      if (result === "retry") continue;
+      return result;
+    }
+
+    if (!isLineTurn(room.turn)) {
+      throw new Error("いまは提出できません。");
+    }
+    if (room.turn.writerId !== options.playerId) {
+      throw new Error("あなたの番ではありません。");
+    }
+
+    const writer = players.find((p) => p.id === options.playerId);
+    if (!writer) throw new Error("連衆情報が見つかりません。");
+
+    const result = applyOnlineSubmit({
+      poems: room.poems,
+      stepIndex: room.turn.stepIndex,
+      draft: options.draft,
+      writer,
+      playerCount: players.length,
+      roster: players,
+    });
+
+    const turn: TurnState | null = result.done
+      ? null
+      : {
+          stepIndex: result.nextStep,
+          writerId: result.nextWriterId,
+          draft: "",
+          status: "idle",
+        };
+
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("rooms")
+      .update({
+        phase: result.done ? "reveal" : "writing",
+        step_index: result.done ? room.turn.stepIndex : result.nextStep,
+        poems: result.poems,
+        turn,
+      })
+      .eq("id", options.roomId)
+      .eq("step_index", room.step_index)
+      .select("id");
+    if (error) throw error;
+    if (!data?.length) continue;
+
+    return loadRoomSnapshot(options.roomId);
+  }
+
+  throw new Error("提出が混み合っています。もう一度試してください。");
+}
+
+async function trySubmitShirazu(
+  snapshot: OnlineRoomSnapshot,
+  options: { roomId: string; playerId: string; draft: string },
+): Promise<OnlineRoomSnapshot | "retry"> {
   const { room, players } = snapshot;
-  if (room.phase !== "writing" || !room.turn) {
+  if (!isShirazuTurn(room.turn)) {
     throw new Error("いまは提出できません。");
   }
-  if (room.turn.writerId !== options.playerId) {
-    throw new Error("あなたの番ではありません。");
+  const turn = room.turn;
+
+  // 既に提出済みなら成功扱いで最新を返す
+  if (turn.submittedIds.includes(options.playerId)) {
+    return snapshot;
   }
 
-  const writer = players.find((p) => p.id === options.playerId);
-  if (!writer) throw new Error("連衆情報が見つかりません。");
+  const seat = players.findIndex((p) => p.id === options.playerId);
+  if (seat < 0) throw new Error("連衆情報が見つかりません。");
 
-  const result = applyOnlineSubmit({
+  const poemIndex = shirazuPoemForSeat(
+    seat,
+    turn.roundIndex,
+    players.length,
+  );
+  const applied = applyShirazuRoundSubmit({
     poems: room.poems,
-    stepIndex: room.turn.stepIndex,
+    turn,
+    poemIndex,
     draft: options.draft,
-    writer,
+    playerId: options.playerId,
     playerCount: players.length,
-    roster: players,
   });
 
-  const turn: TurnState | null = result.done
-    ? null
-    : {
-        stepIndex: result.nextStep,
-        writerId: result.nextWriterId,
-        draft: "",
-        status: "idle",
-      };
+  // 楽観ロック用：毎回 step_index を進める（ラウンド番号は turn が本体）
+  const nextStepIndex = room.step_index + 1;
 
   const supabase = getSupabase();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("rooms")
     .update({
-      phase: result.done ? "reveal" : "writing",
-      step_index: result.done ? room.turn.stepIndex : result.nextStep,
-      poems: result.poems,
-      turn,
+      phase: applied.done ? "reveal" : "writing",
+      step_index: nextStepIndex,
+      poems: applied.poems,
+      turn: applied.nextTurn,
     })
     .eq("id", options.roomId)
-    .eq("step_index", room.step_index);
+    .eq("step_index", room.step_index)
+    .select("id");
   if (error) throw error;
+  if (!data?.length) return "retry";
 
   return loadRoomSnapshot(options.roomId);
 }

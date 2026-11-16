@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { HomeScreen, type HomeStep } from "@/components/HomeScreen";
 import { RevealPhase } from "@/components/RevealPhase";
+import { ShirazuWritingPhase } from "@/components/ShirazuWritingPhase";
 import { WaitingLobby } from "@/components/WaitingLobby";
 import { WritingPhase } from "@/components/WritingPhase";
 import { APP_VERSION } from "@/lib/app-version";
@@ -22,11 +23,13 @@ import {
 import type { OnlineRoomSnapshot } from "@/lib/online/types";
 import {
   clampShirazuDraft,
-  locateShirazuStep,
   normalizeShirazuMora,
-  shirazuProgressLabel,
+  shirazuPoemForSeat,
 } from "@/lib/shirazu";
-import { applyOnlineSubmit } from "@/lib/online/submit";
+import {
+  applyOnlineSubmit,
+  applyShirazuCharToPoem,
+} from "@/lib/online/submit";
 import { assignPartIndexes } from "@/lib/roles";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -46,6 +49,7 @@ import type {
   TurnState,
   VerseMode,
 } from "@/types/game";
+import { isLineTurn, isShirazuTurn } from "@/types/game";
 
 /** 完成→披露用（長め） */
 const PHASE_FADE_MS = 1100;
@@ -143,17 +147,25 @@ export function GameApp() {
       setPoems(snapshot.room.poems ?? []);
       setTurn(snapshot.room.turn);
       setPhase(snapshot.room.phase);
-      // 自分の番でなければローカル下書きを捨てる
-      if (
-        !snapshot.room.turn ||
-        snapshot.room.turn.writerId !== myId ||
-        snapshot.room.turn.status === "submitted"
+      const nextTurn = snapshot.room.turn;
+      if (isShirazuTurn(nextTurn)) {
+        if (nextTurn.submittedIds.includes(myId)) setLocalDraft("");
+      } else if (
+        !isLineTurn(nextTurn) ||
+        nextTurn.writerId !== myId ||
+        nextTurn.status === "submitted"
       ) {
         setLocalDraft("");
       }
     },
     [myId],
   );
+
+  /** 短冊が回ったら下書きを捨てる */
+  const shirazuRound = isShirazuTurn(turn) ? turn.roundIndex : null;
+  useEffect(() => {
+    if (shirazuRound != null) setLocalDraft("");
+  }, [shirazuRound]);
 
   const clearSubscription = useCallback(() => {
     subRef.current?.unsubscribe();
@@ -430,43 +442,76 @@ export function GameApp() {
   };
 
   const handleDraftChange = (value: string) => {
-    if (!turn || turn.writerId !== myId || turn.status === "submitted") return;
-    const isShirazu = poems[0]?.mode === "shirazu";
-    const next = isShirazu
-      ? clampShirazuDraft(value)
-      : clampText(value, partLimit(poems[0]?.mode ?? mode, turn.stepIndex));
-    setLocalDraft(next);
+    if (!turn) return;
+    if (isShirazuTurn(turn)) {
+      if (turn.submittedIds.includes(myId)) return;
+      setLocalDraft(clampShirazuDraft(value));
+      return;
+    }
+    if (!isLineTurn(turn)) return;
+    if (turn.writerId !== myId || turn.status === "submitted") return;
+    setLocalDraft(
+      clampText(value, partLimit(poems[0]?.mode ?? mode, turn.stepIndex)),
+    );
   };
 
   const handleSubmit = async () => {
-    if (
-      !turn ||
-      turn.writerId !== myId ||
-      busy ||
-      submitLockRef.current ||
-      fadingRef.current ||
-      turn.status === "submitted"
-    ) {
+    if (!turn || busy || submitLockRef.current || fadingRef.current) return;
+
+    const shirazu = isShirazuTurn(turn);
+    if (shirazu) {
+      if (turn.submittedIds.includes(myId)) return;
+    } else if (isLineTurn(turn)) {
+      if (turn.writerId !== myId || turn.status === "submitted") return;
+    } else {
       return;
     }
-    const draft =
-      poems[0]?.mode === "shirazu"
-        ? normalizeShirazuMora(localDraft)
-        : localDraft.trim();
+
+    const draft = shirazu
+      ? normalizeShirazuMora(localDraft)
+      : localDraft.trim();
     if (!draft) return;
 
     // 連打防止：同期ロック＋ボタン無効化
     submitLockRef.current = true;
     setBusy(true);
-    setTurn((prev) => (prev ? { ...prev, status: "submitted" } : prev));
+    setLocalDraft("");
+    const poemsBefore = poems;
+    if (shirazu && mySeat >= 0) {
+      const poemIndex = shirazuPoemForSeat(
+        mySeat,
+        turn.roundIndex,
+        players.length,
+      );
+      setPoems(
+        applyShirazuCharToPoem(poems, poemIndex, turn.roundIndex, draft),
+      );
+    }
+    setTurn((prev) => {
+      if (isShirazuTurn(prev)) {
+        if (prev.submittedIds.includes(myId)) return prev;
+        return {
+          ...prev,
+          submittedIds: [...prev.submittedIds, myId],
+        };
+      }
+      if (isLineTurn(prev)) return { ...prev, status: "submitted" };
+      return prev;
+    });
     setErrorMessage("");
 
-    // ローカル一人
+    // ローカル一人（俳句・短歌のみ）
     if (!roomId) {
       try {
+        if (!isLineTurn(turn)) {
+          setErrorMessage("この遊び方は複数人専用です。");
+          return;
+        }
         const writerPlayer = players.find((p) => p.id === myId);
         if (!writerPlayer) {
-          setTurn((prev) => (prev ? { ...prev, status: "idle" } : prev));
+          setTurn((prev) =>
+            isLineTurn(prev) ? { ...prev, status: "idle" } : prev,
+          );
           return;
         }
         const result = applyOnlineSubmit({
@@ -526,7 +571,17 @@ export function GameApp() {
       }
     } catch (error) {
       setErrorMessage((error as Error).message || "提出に失敗しました。");
-      setTurn((prev) => (prev ? { ...prev, status: "idle" } : prev));
+      if (shirazu) setPoems(poemsBefore);
+      setTurn((prev) => {
+        if (isShirazuTurn(prev)) {
+          return {
+            ...prev,
+            submittedIds: prev.submittedIds.filter((id) => id !== myId),
+          };
+        }
+        if (isLineTurn(prev)) return { ...prev, status: "idle" };
+        return prev;
+      });
     } finally {
       submitLockRef.current = false;
       setBusy(false);
@@ -561,37 +616,38 @@ export function GameApp() {
     () => players.find((p) => p.id === myId) ?? null,
     [players, myId],
   );
+  const mySeat = useMemo(
+    () => players.findIndex((p) => p.id === myId),
+    [players, myId],
+  );
   const writer = useMemo(() => {
-    if (!turn) return null;
+    if (!isLineTurn(turn)) return null;
     return players.find((p) => p.id === turn.writerId) ?? null;
   }, [players, turn]);
 
   const activePoem = poems[0] ?? null;
   const sessionSize = players.length || playerCount;
 
+  const handPoem = useMemo(() => {
+    if (!isShirazuTurn(turn) || mySeat < 0 || poems.length === 0) return null;
+    const poemIndex = shirazuPoemForSeat(
+      mySeat,
+      turn.roundIndex,
+      players.length,
+    );
+    return poems[poemIndex] ?? null;
+  }, [turn, mySeat, poems, players.length]);
+
   const promptLines = useMemo(() => {
-    if (!turn || poems.length === 0) return [];
-    if (poems[0].mode === "shirazu") {
-      const { poemIndex, lineIndex } = locateShirazuStep(turn.stepIndex);
-      const poem = poems[poemIndex];
-      if (!poem) return [];
-      return poem.lines
-        .slice(0, lineIndex + 1)
-        .filter((l): l is NonNullable<typeof l> => l != null && l.text.length > 0);
-    }
+    if (!isLineTurn(turn) || poems.length === 0) return [];
     return getPromptLines(poems[0], turn.stepIndex);
   }, [poems, turn]);
 
-  const progressLabel = useMemo(() => {
-    if (!turn || poems.length === 0) return null;
-    if (poems[0].mode === "shirazu") {
-      return shirazuProgressLabel(turn.stepIndex, sessionSize);
-    }
-    return null;
-  }, [poems, turn, sessionSize]);
-
-  const draftForUi =
-    turn && turn.writerId === myId ? localDraft : (turn?.draft ?? "");
+  const draftForUi = isLineTurn(turn)
+    ? turn.writerId === myId
+      ? localDraft
+      : (turn.draft ?? "")
+    : localDraft;
 
   const errorToast =
     toastText && typeof document !== "undefined"
@@ -673,32 +729,53 @@ export function GameApp() {
           />
         )}
 
-        {phase === "writing" && turn && writer && activePoem && (
-          <WritingPhase
-            mode={activePoem.mode}
-            stepIndex={turn.stepIndex}
-            draft={draftForUi}
-            promptLines={promptLines}
-            progressLabel={progressLabel}
-            playerCount={sessionSize}
-            writer={writer}
-            myId={myId}
-            waitingForPartner={writer.id !== myId}
-            isSolo={players.length === 1 && !roomId}
-            busy={busy}
-            onDraftChange={handleDraftChange}
-            onSubmit={() => {
-              void handleSubmit();
-            }}
-            onBack={
-              players.length === 1 && !roomId
-                ? () => {
-                    void handleLobbyBack();
-                  }
-                : undefined
-            }
-          />
-        )}
+        {phase === "writing" &&
+          isShirazuTurn(turn) &&
+          handPoem && (
+            <ShirazuWritingPhase
+              poem={handPoem}
+              roundIndex={turn.roundIndex}
+              draft={localDraft}
+              playerCount={sessionSize}
+              submittedCount={turn.submittedIds.length}
+              hasSubmitted={turn.submittedIds.includes(myId)}
+              busy={busy}
+              onDraftChange={handleDraftChange}
+              onSubmit={() => {
+                void handleSubmit();
+              }}
+            />
+          )}
+
+        {phase === "writing" &&
+          isLineTurn(turn) &&
+          writer &&
+          activePoem && (
+            <WritingPhase
+              mode={activePoem.mode}
+              stepIndex={turn.stepIndex}
+              draft={draftForUi}
+              promptLines={promptLines}
+              progressLabel={null}
+              playerCount={sessionSize}
+              writer={writer}
+              myId={myId}
+              waitingForPartner={writer.id !== myId}
+              isSolo={players.length === 1 && !roomId}
+              busy={busy}
+              onDraftChange={handleDraftChange}
+              onSubmit={() => {
+                void handleSubmit();
+              }}
+              onBack={
+                players.length === 1 && !roomId
+                  ? () => {
+                      void handleLobbyBack();
+                    }
+                  : undefined
+              }
+            />
+          )}
 
         {phase === "reveal" && poems.length > 0 && (
           <RevealPhase

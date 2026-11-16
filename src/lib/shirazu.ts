@@ -1,7 +1,7 @@
 import { moraCountFromKana } from "@/lib/mora";
 import { toKanji } from "@/lib/utils";
 
-/** 詠み人知らずは俳句形（五・七・五＝十七音）を人数分。一ターン＝一音（拗音は二文字） */
+/** リレーで風流：五・七・五＝十七音を人数分。各ラウンド全員が一音書いて短冊を回す */
 export const SHIRAZU_LINE_TARGETS = [5, 7, 5] as const;
 export const SHIRAZU_MORA_PER_POEM = 17;
 /** @deprecated 互換用エイリアス */
@@ -57,39 +57,68 @@ const YOON_UNITS = [
 const YOON_SET = new Set<string>(YOON_UNITS);
 const YOON_BASES = new Set([...YOON_UNITS].map((u) => [...u][0]));
 
-export interface ShirazuLocation {
-  poemIndex: number;
+export interface ShirazuMoraLocation {
   lineIndex: number;
   /** 句内の何音目か（0始まり） */
   moraInLine: number;
   lineTarget: number;
+}
+
+export interface ShirazuLocation extends ShirazuMoraLocation {
+  poemIndex: number;
   /** @deprecated moraInLine の別名 */
   charInLine: number;
+}
+
+/** 座席 seat がラウンド r で持つ短冊のインデックス */
+export function shirazuPoemForSeat(
+  seat: number,
+  roundIndex: number,
+  playerCount: number,
+): number {
+  const n = Math.max(1, playerCount);
+  return ((seat - roundIndex) % n + n) % n;
+}
+
+/** ラウンド番号（0..16）→ 五・七・五のどの音か */
+export function locateShirazuMora(roundIndex: number): ShirazuMoraLocation {
+  if (roundIndex < 0 || roundIndex >= SHIRAZU_MORA_PER_POEM) {
+    throw new Error(`Invalid shirazu round: ${roundIndex}`);
+  }
+  let rem = roundIndex;
+  for (let lineIndex = 0; lineIndex < SHIRAZU_LINE_TARGETS.length; lineIndex += 1) {
+    const lineTarget = SHIRAZU_LINE_TARGETS[lineIndex];
+    if (rem < lineTarget) {
+      return { lineIndex, moraInLine: rem, lineTarget };
+    }
+    rem -= lineTarget;
+  }
+  throw new Error(`Invalid shirazu round: ${roundIndex}`);
 }
 
 export function shirazuTotalSteps(playerCount: number): number {
   return SHIRAZU_MORA_PER_POEM * playerCount;
 }
 
+/** @deprecated 旧・1首完走順。CPU退避コード用 */
 export function locateShirazuStep(stepIndex: number): ShirazuLocation {
   const poemIndex = Math.floor(stepIndex / SHIRAZU_MORA_PER_POEM);
-  let rem = stepIndex % SHIRAZU_MORA_PER_POEM;
-  for (let lineIndex = 0; lineIndex < SHIRAZU_LINE_TARGETS.length; lineIndex += 1) {
-    const lineTarget = SHIRAZU_LINE_TARGETS[lineIndex];
-    if (rem < lineTarget) {
-      return {
-        poemIndex,
-        lineIndex,
-        moraInLine: rem,
-        charInLine: rem,
-        lineTarget,
-      };
-    }
-    rem -= lineTarget;
-  }
-  throw new Error(`Invalid shirazu step: ${stepIndex}`);
+  const mora = locateShirazuMora(stepIndex % SHIRAZU_MORA_PER_POEM);
+  return {
+    poemIndex,
+    ...mora,
+    charInLine: mora.moraInLine,
+  };
 }
 
+/** 執筆中の進捗（手元の短冊基準。首番号は出さない） */
+export function shirazuRoundProgressLabel(roundIndex: number): string {
+  const { lineIndex, moraInLine, lineTarget } = locateShirazuMora(roundIndex);
+  const lineNames = ["上の句", "中の句", "下の句"];
+  return `${lineNames[lineIndex]}（${toKanji(moraInLine + 1)}／${toKanji(lineTarget)}音）`;
+}
+
+/** @deprecated 旧ラベル。shirazuRoundProgressLabel を使う */
 export function shirazuProgressLabel(stepIndex: number, playerCount: number): string {
   const { poemIndex, lineIndex, moraInLine, lineTarget } =
     locateShirazuStep(stepIndex);

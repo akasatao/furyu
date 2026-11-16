@@ -1,7 +1,8 @@
 import {
   clampShirazuDraft,
-  locateShirazuStep,
+  locateShirazuMora,
   normalizeShirazuMora,
+  SHIRAZU_MORA_PER_POEM,
 } from "@/lib/shirazu";
 import { EMPTY_FALLBACK } from "@/lib/constants";
 import {
@@ -11,7 +12,12 @@ import {
   totalSteps,
 } from "@/lib/utils";
 import { writerForStep } from "@/lib/roles";
-import type { Poem, Player } from "@/types/game";
+import type {
+  LineTurnState,
+  Poem,
+  Player,
+  ShirazuTurnState,
+} from "@/types/game";
 
 const SHIRAZU_AUTHOR = {
   authorId: "shirazu",
@@ -35,13 +41,18 @@ function applyLine(
   return { ...poem, lines };
 }
 
-function applyShirazuChar(
+/** 指定短冊の指定ラウンド位置に一音を追記 */
+export function applyShirazuCharToPoem(
   poems: Poem[],
-  stepIndex: number,
+  poemIndex: number,
+  roundIndex: number,
   raw: string,
 ): Poem[] {
-  const unit = normalizeShirazuMora(raw) || normalizeShirazuMora(clampShirazuDraft(raw)) || "ん";
-  const { poemIndex, lineIndex } = locateShirazuStep(stepIndex);
+  const unit =
+    normalizeShirazuMora(raw) ||
+    normalizeShirazuMora(clampShirazuDraft(raw)) ||
+    "ん";
+  const { lineIndex } = locateShirazuMora(roundIndex);
   return poems.map((poem, pi) => {
     if (pi !== poemIndex) return poem;
     const lines = [...poem.lines];
@@ -61,14 +72,19 @@ export function applyOnlineSubmit(args: {
   writer: Player;
   playerCount: number;
   roster: Player[];
-}): { poems: Poem[]; done: boolean; nextStep: number; nextWriterId: string } {
+}): {
+  poems: Poem[];
+  done: boolean;
+  nextStep: number;
+  nextWriterId: string;
+} {
   const { poems, stepIndex, draft, writer, playerCount, roster } = args;
   const verseMode = poems[0]?.mode ?? "haiku";
-  const updated =
-    verseMode === "shirazu"
-      ? applyShirazuChar(poems, stepIndex, draft)
-      : [applyLine(poems[0], stepIndex, draft, writer)];
+  if (verseMode === "shirazu") {
+    throw new Error("shirazu は applyShirazuRoundSubmit を使ってください");
+  }
 
+  const updated = [applyLine(poems[0], stepIndex, draft, writer)];
   const total = totalSteps(verseMode, playerCount);
   if (stepIndex >= total - 1) {
     return {
@@ -88,3 +104,55 @@ export function applyOnlineSubmit(args: {
     nextWriterId: nextWriter.id,
   };
 }
+
+export function applyShirazuRoundSubmit(args: {
+  poems: Poem[];
+  turn: ShirazuTurnState;
+  poemIndex: number;
+  draft: string;
+  playerId: string;
+  playerCount: number;
+}): {
+  poems: Poem[];
+  done: boolean;
+  nextTurn: ShirazuTurnState | null;
+} {
+  const { poems, turn, poemIndex, draft, playerId, playerCount } = args;
+
+  if (turn.submittedIds.includes(playerId)) {
+    return { poems, done: false, nextTurn: turn };
+  }
+
+  const updated = applyShirazuCharToPoem(
+    poems,
+    poemIndex,
+    turn.roundIndex,
+    draft,
+  );
+  const submittedIds = [...turn.submittedIds, playerId];
+
+  if (submittedIds.length < playerCount) {
+    return {
+      poems: updated,
+      done: false,
+      nextTurn: { ...turn, submittedIds },
+    };
+  }
+
+  // 全員提出 → 短冊を回す（次ラウンド）または完成
+  if (turn.roundIndex >= SHIRAZU_MORA_PER_POEM - 1) {
+    return { poems: updated, done: true, nextTurn: null };
+  }
+
+  return {
+    poems: updated,
+    done: false,
+    nextTurn: {
+      kind: "shirazu",
+      roundIndex: turn.roundIndex + 1,
+      submittedIds: [],
+    },
+  };
+}
+
+export type { LineTurnState };

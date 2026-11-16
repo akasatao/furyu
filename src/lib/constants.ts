@@ -9,7 +9,7 @@ export const MODE_LABEL: Record<VerseMode, string> = {
 export const MODE_PATTERN: Record<VerseMode, string> = {
   haiku: "五・七・五",
   tanka: "五・七・五・七・七",
-  shirazu: "一音リレー（ひらがな／漢字／英字）・人数分の俳句",
+  shirazu: "全員で一音ずつ書いて短冊を回す・人数分の俳句",
 };
 
 export const LINE_COUNT: Record<VerseMode, number> = {

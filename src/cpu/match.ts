@@ -18,6 +18,7 @@ import {
   playerColor,
 } from "@/lib/utils";
 import type { Player, Poem, TurnState, VerseMode } from "@/types/game";
+import { isLineTurn } from "@/types/game";
 
 export const CPU_MATCH_ENABLED = false;
 
@@ -91,7 +92,7 @@ export function scheduleCpuTurn(options: {
   timers.push(
     window.setTimeout(() => {
       setTurn((prev) =>
-        prev && prev.stepIndex === stepIndex
+        isLineTurn(prev) && prev.stepIndex === stepIndex
           ? { ...prev, status: "typing" }
           : prev,
       );
@@ -110,7 +111,7 @@ export function scheduleCpuTurn(options: {
               seed: `${writer.id}-${stepIndex}-${context}`,
             });
       setTurn((prev) => {
-        if (!prev || prev.stepIndex !== stepIndex) return prev;
+        if (!isLineTurn(prev) || prev.stepIndex !== stepIndex) return prev;
         return { ...prev, draft: line, status: "submitted" };
       });
     }, think),
