@@ -300,15 +300,16 @@ export function GameApp() {
     setBusy(true);
     setErrorMessage("");
     try {
+      const playerId = myId || getOrCreatePlayerId();
+      setMyId(playerId);
+      // 失敗時はフェードなしでエラー表示
+      const snapshot = await joinOnlineRoom({
+        code,
+        playerId,
+        nickname: displayName,
+      });
       await runWhiteFade(
-        async () => {
-          const playerId = myId || getOrCreatePlayerId();
-          setMyId(playerId);
-          const snapshot = await joinOnlineRoom({
-            code,
-            playerId,
-            nickname: displayName,
-          });
+        () => {
           flushSync(() => {
             setNickname(displayName);
             applySnapshot(snapshot);

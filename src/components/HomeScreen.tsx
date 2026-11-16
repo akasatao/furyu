@@ -65,9 +65,27 @@ export function HomeScreen({
   const [pressedChoice, setPressedChoice] = useState<
     "solo" | "multi" | "join" | VerseMode | null
   >(null);
+  /** キーボード表示中はコンパクト＋スクロールに切替 */
+  const [inputFocused, setInputFocused] = useState(false);
   const lockedRef = useRef(false);
+  const joinInputRef = useRef<HTMLInputElement>(null);
 
   const isLocked = busy || transitioning;
+
+  const handleInputFocus = (scrollJoin = false) => {
+    setInputFocused(true);
+    if (!scrollJoin) return;
+    window.requestAnimationFrame(() => {
+      joinInputRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
+  };
+
+  const handleInputBlur = () => {
+    setInputFocused(false);
+  };
 
   const goToStep = async (next: HomeStep) => {
     if (next === step || lockedRef.current) return;
@@ -149,23 +167,43 @@ export function HomeScreen({
   };
 
   return (
-    <div className="relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-hidden bg-white md:max-w-lg md:min-h-[36rem]">
+    <div
+      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col bg-white md:max-w-lg md:min-h-[36rem] md:overflow-hidden ${
+        inputFocused
+          ? "overflow-y-auto overscroll-contain"
+          : "overflow-hidden"
+      }`}
+    >
       <div
         className={`flex min-h-0 flex-1 flex-col ${
           transitioning ? "pointer-events-none" : ""
         } ${
           step === "mode"
-            ? "justify-center gap-3 md:justify-start md:gap-6"
+            ? inputFocused
+              ? "justify-start gap-2 pb-4 md:justify-start md:gap-6"
+              : "justify-center gap-3 md:justify-start md:gap-6"
             : "gap-4"
         }`}
       >
         {step === "mode" ? (
           <>
-            <header className="shrink-0 space-y-1.5 text-center md:space-y-3">
+            <header
+              className={`shrink-0 text-center md:space-y-3 ${
+                inputFocused ? "space-y-1" : "space-y-1.5"
+              }`}
+            >
               <hr className="brush-line mx-auto w-10 md:w-14" />
-              <h1 className="text-3xl tracking-[0.2em] md:text-5xl">
+              <h1
+                className={`tracking-[0.2em] md:text-5xl ${
+                  inputFocused ? "text-2xl" : "text-3xl"
+                }`}
+              >
                 風流
-                <span className="mt-0.5 block text-base tracking-[0.35em] text-black/55 md:mt-1 md:text-xl">
+                <span
+                  className={`mt-0.5 block tracking-[0.35em] text-black/55 md:mt-1 md:text-xl ${
+                    inputFocused ? "text-sm" : "text-base"
+                  }`}
+                >
                   オンライン
                 </span>
               </h1>
@@ -179,16 +217,28 @@ export function HomeScreen({
                 value={nickname}
                 maxLength={12}
                 placeholder="名無しの俳人"
+                onFocus={() => handleInputFocus(false)}
+                onBlur={handleInputBlur}
                 onChange={(e) => onNicknameChange(e.target.value)}
                 className="brush-input w-full px-4 py-2.5 text-base md:py-3"
               />
             </label>
 
-            <section className="brush-box flex min-h-0 flex-1 flex-col gap-3 p-3 md:flex-none md:p-4">
+            <section
+              className={`brush-box flex shrink-0 flex-col gap-2 p-3 md:flex-none md:gap-3 md:p-4 ${
+                inputFocused ? "" : "min-h-0 flex-1 md:flex-none"
+              }`}
+            >
               <p className="shrink-0 text-sm tracking-widest text-black/70">
                 モードを選ぶ
               </p>
-              <div className="flex min-h-0 flex-1 flex-col justify-center gap-2 md:flex-none">
+              <div
+                className={`flex flex-col gap-2 md:flex-none ${
+                  inputFocused
+                    ? "shrink-0"
+                    : "min-h-0 flex-1 justify-center md:flex-none"
+                }`}
+              >
                 {MODES.map((m) => (
                   <button
                     key={m}
@@ -200,9 +250,11 @@ export function HomeScreen({
                     onPointerCancel={releaseChoice}
                     onPointerLeave={releaseChoice}
                     aria-pressed={pressedChoice === m}
-                    className={`brush-btn-outline w-full px-4 py-3.5 text-lg tracking-[0.35em] md:py-4 md:text-xl ${
-                      pressedChoice === m ? "is-pressed" : ""
-                    }`}
+                    className={`brush-btn-outline w-full tracking-[0.35em] md:py-4 md:text-xl ${
+                      inputFocused
+                        ? "px-4 py-2.5 text-base"
+                        : "px-4 py-3.5 text-lg"
+                    } ${pressedChoice === m ? "is-pressed" : ""}`}
                   >
                     {MODE_LABEL[m]}
                   </button>
@@ -214,19 +266,31 @@ export function HomeScreen({
               <p className="mb-2 text-sm tracking-widest text-black/70">
                 ルームコードで入る
               </p>
-              <div className="flex gap-2">
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!isLocked) handleJoin();
+                }}
+              >
                 <input
+                  ref={joinInputRef}
                   type="text"
                   value={joinCode}
                   maxLength={6}
                   placeholder="A1B2"
+                  enterKeyHint="go"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  onFocus={() => handleInputFocus(true)}
+                  onBlur={handleInputBlur}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em]"
                 />
                 <button
-                  type="button"
+                  type="submit"
                   disabled={isLocked}
-                  onClick={handleJoin}
                   onPointerDown={() => pressChoice("join")}
                   onPointerUp={releaseChoice}
                   onPointerCancel={releaseChoice}
@@ -238,7 +302,7 @@ export function HomeScreen({
                 >
                   入室
                 </button>
-              </div>
+              </form>
               {joinError && (
                 <p className="mt-2 text-xs underline">{joinError}</p>
               )}
