@@ -693,8 +693,6 @@ export async function resetRoomToLobby(options: {
 
 export type RoomSubscription = {
   unsubscribe: () => void;
-  /** リロード・タブを閉じる直前に、抜けることを他の連衆へ知らせる */
-  sendLeave?: (playerId: string) => void;
 };
 
 const LEAVE_EVENT = "leave";
@@ -752,14 +750,36 @@ export function subscribeOnlineRoom(
       alive = false;
       void supabase.removeChannel(channel);
     },
-    sendLeave: (playerId: string) => {
-      void channel.send({
-        type: "broadcast",
-        event: LEAVE_EVENT,
-        payload: { playerId },
-      });
-    },
   };
+}
+
+/**
+ * リロード・タブを閉じる直前に、抜けることを他の連衆へ知らせる。
+ * Realtime の WebSocket は pagehide で先に切断されるため、keepalive の REST で送る。
+ */
+export function sendLeaveOnUnload(roomId: string, playerId: string): void {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return;
+  void fetch(`${url}/realtime/v1/api/broadcast`, {
+    method: "POST",
+    keepalive: true,
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messages: [
+        {
+          topic: `room-${roomId}`,
+          event: LEAVE_EVENT,
+          payload: { playerId },
+          private: false,
+        },
+      ],
+    }),
+  }).catch(() => {});
 }
 
 /** 早く入った順（亭主の引き継ぎ順） */

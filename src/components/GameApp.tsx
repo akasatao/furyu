@@ -29,6 +29,7 @@ import {
   leaveOnlineRoom,
   leaveProcessorId,
   resetRoomToLobby,
+  sendLeaveOnUnload,
   startOnlineGame,
   submitOnlineTurn,
   subscribeOnlineRoom,
@@ -300,7 +301,7 @@ export function GameApp() {
         deleteRoomOnUnload(roomId);
         return;
       }
-      subRef.current?.sendLeave?.(myId);
+      sendLeaveOnUnload(roomId, myId);
     };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
