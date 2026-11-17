@@ -125,7 +125,7 @@ export function OpenRoomList({
                       onPointerCancel={() => setPressedKey(null)}
                       onPointerLeave={() => setPressedKey(null)}
                       onClick={() => onSpectate(room.id)}
-                      className={`brush-btn-outline min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em]${
+                      className={`brush-btn min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em]${
                         pressedKey === watchKey ? " is-pressed" : ""
                       }`}
                     >
@@ -139,7 +139,7 @@ export function OpenRoomList({
                       onPointerCancel={() => setPressedKey(null)}
                       onPointerLeave={() => setPressedKey(null)}
                       onClick={() => onJoin(room.id)}
-                      className={`brush-btn min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em]${
+                      className={`brush-btn-outline min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em]${
                         pressedKey === enterKey ? " is-pressed" : ""
                       }`}
                     >

@@ -13,12 +13,17 @@ create table if not exists public.rooms (
   poems jsonb not null default '[]'::jsonb,
   turn jsonb,
   theme text not null default '',
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- 在室中だけ更新する。途切れた部屋は一覧から外し、行も消す
+  last_seen timestamptz not null default now()
 );
 
 -- 既存 DB 向け（未追加なら実行）
 alter table public.rooms
   add column if not exists theme text not null default '';
+
+alter table public.rooms
+  add column if not exists last_seen timestamptz not null default now();
 
 create table if not exists public.room_players (
   id uuid primary key default gen_random_uuid(),

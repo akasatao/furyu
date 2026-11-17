@@ -30,8 +30,10 @@ import {
   leaveOnlineRoom,
   leaveProcessorId,
   resetRoomToLobby,
+  ROOM_HEARTBEAT_MS,
   sendLeaveOnUnload,
   startOnlineGame,
+  touchRoom,
   submitOnlineTurn,
   subscribeOnlineRoom,
   type RoomSubscription,
@@ -333,6 +335,24 @@ export function GameApp() {
   }, [roomId, myId]);
 
   useEffect(() => () => clearSubscription(), [clearSubscription]);
+
+  /** 和室を開いているあいだ「まだいる」と書く。途切れると部屋は消える */
+  useEffect(() => {
+    if (!roomId) return;
+    const send = () => {
+      void touchRoom(roomId);
+    };
+    send();
+    const timer = window.setInterval(send, ROOM_HEARTBEAT_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") send();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [roomId]);
 
   const handleModeChange = useCallback((next: VerseMode) => {
     setErrorMessage("");

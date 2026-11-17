@@ -129,20 +129,36 @@ export async function createOnlineRoom(options: {
   return loadRoomSnapshot(room.id);
 }
 
-/** 放置された部屋を一覧に出さないための上限 */
+/** 在室中に「まだいる」と書く間隔 */
+export const ROOM_HEARTBEAT_MS = 15_000;
+/** このあいだ更新がなければ、誰もいない部屋として消す */
+const ROOM_STALE_MS = 90_000;
+/** last_seen 列が無いときの保険（作成からこの時間で一覧から外す） */
 const OPEN_ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (
+    typeof error === "object" &&
+    error &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return "";
+}
+
+function isMissingColumn(error: unknown, column: string): boolean {
+  const message = errorMessage(error);
+  return (
+    new RegExp(column, "i").test(message) &&
+    /does not exist|schema cache/i.test(message)
+  );
+}
+
 function isMissingRoleColumn(error: unknown): boolean {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "object" &&
-          error &&
-          "message" in error &&
-          typeof error.message === "string"
-        ? error.message
-        : "";
-  return /role/i.test(message) && /does not exist|schema cache/i.test(message);
+  return isMissingColumn(error, "role");
 }
 
 function toOpenPhase(phase: string): OpenRoomSummary["phase"] {
@@ -180,7 +196,30 @@ function summarizeOpenRooms(rows: OpenRoomRow[]): OpenRoomSummary[] {
     .filter((room) => room.hostName !== "" && room.playerCount > 0);
 }
 
-export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
+async function selectOpenRooms(
+  freshAfter: string,
+  withRole: boolean,
+): Promise<{ rows: OpenRoomRow[] } | { missingRole: true } | { missingLastSeen: true }> {
+  const supabase = getSupabase();
+  const players = withRole
+    ? "room_players(name, is_host, role)"
+    : "room_players(name, is_host)";
+  const { data, error } = await supabase
+    .from("rooms")
+    .select(`id, mode, phase, max_players, theme, created_at, ${players}`)
+    .in("phase", ["lobby", "writing", "reveal"])
+    .gte("last_seen", freshAfter)
+    .order("last_seen", { ascending: false });
+  if (!error) {
+    return { rows: (data ?? []) as unknown as OpenRoomRow[] };
+  }
+  if (isMissingColumn(error, "last_seen")) return { missingLastSeen: true };
+  if (withRole && isMissingRoleColumn(error)) return { missingRole: true };
+  throw error;
+}
+
+/** last_seen がまだ無い DB 向け。作成から2時間で一覧から外す */
+async function listOpenRoomsByAge(): Promise<OpenRoomSummary[]> {
   const supabase = getSupabase();
   const since = new Date(Date.now() - OPEN_ROOM_MAX_AGE_MS).toISOString();
   const listed = await supabase
@@ -197,7 +236,6 @@ export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
   }
   if (!isMissingRoleColumn(listed.error)) throw listed.error;
 
-  // role 列を足す前の DB でも、一覧と入門は続ける
   const legacy = await supabase
     .from("rooms")
     .select(
@@ -208,6 +246,33 @@ export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
     .order("created_at", { ascending: false });
   if (legacy.error) throw legacy.error;
   return summarizeOpenRooms((legacy.data ?? []) as unknown as OpenRoomRow[]);
+}
+
+export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
+  const supabase = getSupabase();
+  const freshAfter = new Date(Date.now() - ROOM_STALE_MS).toISOString();
+  const removed = await supabase.from("rooms").delete().lt("last_seen", freshAfter);
+  if (removed.error && isMissingColumn(removed.error, "last_seen")) {
+    return listOpenRoomsByAge();
+  }
+
+  const listed = await selectOpenRooms(freshAfter, true);
+  if ("missingLastSeen" in listed) return listOpenRoomsByAge();
+  if ("rows" in listed) return summarizeOpenRooms(listed.rows);
+
+  const legacy = await selectOpenRooms(freshAfter, false);
+  if ("missingLastSeen" in legacy) return listOpenRoomsByAge();
+  if ("rows" in legacy) return summarizeOpenRooms(legacy.rows);
+  throw new Error("和室一覧を読み込めませんでした。");
+}
+
+/** 和室を開いているあいだ呼ぶ。更新が途切れた部屋は一覧から消える */
+export async function touchRoom(roomId: string): Promise<void> {
+  const supabase = getSupabase();
+  await supabase
+    .from("rooms")
+    .update({ last_seen: new Date().toISOString() })
+    .eq("id", roomId);
 }
 
 export function subscribeOpenRooms(
