@@ -46,8 +46,11 @@ import {
   touchRoom,
   submitOnlineTurn,
   subscribeOnlineRoom,
-  type RoomSubscription,
+  type OnlineRoomSubscription,
 } from "@/lib/online/rooms";
+import type { StampId } from "@/lib/stamps";
+import { StampBalloons, type StampBalloon } from "@/components/StampBalloons";
+import { StampPicker } from "@/components/StampPicker";
 import type { OnlineRoomSnapshot } from "@/lib/online/types";
 import {
   canSubmitFreeShirazuUnit,
@@ -94,6 +97,9 @@ const NAV_FADE_MS = 420;
 const NAV_HOLD_MS = 120;
 /** 破門の文字を見せておく時間 */
 const BANISH_HOLD_MS = 2200;
+/** スタンプ連打の間引き */
+const STAMP_THROTTLE_MS = 400;
+const MAX_BALLOONS = 30;
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -135,7 +141,13 @@ export function GameApp() {
   /** リレー流派 */
   const [shirazuStyle, setShirazuStyle] = useState<ShirazuStyle>("strict");
 
-  const subRef = useRef<RoomSubscription | null>(null);
+  /** 披露スタンプの風船（和室の披露中だけ） */
+  const [balloons, setBalloons] = useState<StampBalloon[]>([]);
+
+  const subRef = useRef<OnlineRoomSubscription | null>(null);
+  /** 開宴前の幕などスタンプを出せないあいだに届いたものは捨てる */
+  const stampOpenRef = useRef(false);
+  const lastStampAtRef = useRef(0);
   const fadingRef = useRef(false);
   const submitLockRef = useRef(false);
   /** 同じ対局の句を二重保存しない */
@@ -302,6 +314,25 @@ export function GameApp() {
     if (shirazuRound != null) setLocalDraft("");
   }, [shirazuRound]);
 
+  const addBalloon = useCallback((stamp: StampId, name: string) => {
+    setBalloons((prev) =>
+      [
+        ...prev,
+        {
+          key: uid("st"),
+          stamp,
+          name,
+          x: 10 + Math.random() * 80,
+          sway: Math.random() * 2 - 1,
+        },
+      ].slice(-MAX_BALLOONS),
+    );
+  }, []);
+
+  const removeBalloon = useCallback((key: string) => {
+    setBalloons((prev) => prev.filter((b) => b.key !== key));
+  }, []);
+
   const clearSubscription = useCallback(() => {
     subRef.current?.unsubscribe();
     subRef.current = null;
@@ -412,9 +443,15 @@ export function GameApp() {
           kickedIdsRef.current.add(kickedId);
           setErrorMessage(`${name}さんは破門されました`);
         },
+        (stamp) => {
+          if (!stampOpenRef.current || stamp.playerId === myIdRef.current) {
+            return;
+          }
+          addBalloon(stamp.stamp, stamp.name);
+        },
       );
     },
-    [applySnapshot, clearSubscription],
+    [addBalloon, applySnapshot, clearSubscription],
   );
 
   /** リロード・タブを閉じるときは、自分の在席を消し、残っている連衆へ知らせる */
@@ -459,6 +496,36 @@ export function GameApp() {
   }, []);
 
   const displayName = nickname.trim() || defaultNickname();
+
+  /** 和室の披露中だけ（リレーの開宴前の幕は除く） */
+  const canStamp =
+    Boolean(roomId) &&
+    phase === "reveal" &&
+    !(isShirazuRevealTurn(turn) && turn.poemIndex < 0);
+  const [stampWasOpen, setStampWasOpen] = useState(canStamp);
+  if (stampWasOpen !== canStamp) {
+    setStampWasOpen(canStamp);
+    if (!canStamp) setBalloons([]);
+  }
+  useEffect(() => {
+    stampOpenRef.current = canStamp;
+  }, [canStamp]);
+
+  const handleStamp = useCallback(
+    (stamp: StampId) => {
+      if (!stampOpenRef.current) return;
+      const now = Date.now();
+      if (now - lastStampAtRef.current < STAMP_THROTTLE_MS) return;
+      lastStampAtRef.current = now;
+      const name =
+        playersRef.current.find((p) => p.id === myId)?.name ??
+        spectatorsRef.current.find((p) => p.id === myId)?.name ??
+        displayName;
+      addBalloon(stamp, name);
+      subRef.current?.sendStamp({ stamp, playerId: myId, name });
+    },
+    [addBalloon, displayName, myId],
+  );
 
   /** 白経由フェードのあいだに状態を差し替える。終わってから resolve */
   const runWhiteFade = useCallback(
@@ -1356,7 +1423,11 @@ export function GameApp() {
             />
           </ViewportFit>
         )}
+
+        {canStamp && <StampPicker onSelect={handleStamp} />}
       </main>
+
+      {canStamp && <StampBalloons balloons={balloons} onDone={removeBalloon} />}
 
       {/* 完成→披露などの画面切替用白フェード */}
       <div

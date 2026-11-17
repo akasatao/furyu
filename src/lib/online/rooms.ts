@@ -23,6 +23,7 @@ import {
   shirazuSeatOf,
 } from "@/lib/shirazu";
 import { modeAllowsSolo, THEME_MAX_LENGTH } from "@/lib/constants";
+import { parseStampPayload, type StampPayload } from "@/lib/stamps";
 import type { Player, ShirazuStyle, TurnState, VerseMode } from "@/types/game";
 import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
 import {
@@ -978,9 +979,15 @@ export type RoomSubscription = {
   unsubscribe: () => void;
 };
 
+/** 和室の購読。披露スタンプも同じチャンネルで送る */
+export type OnlineRoomSubscription = RoomSubscription & {
+  sendStamp: (payload: StampPayload) => void;
+};
+
 const LEAVE_EVENT = "leave";
 const SYNC_EVENT = "sync";
 const KICK_EVENT = "kick";
+const STAMP_EVENT = "stamp";
 
 /** Realtime の broadcast を REST で送る（購読していなくても送れる） */
 async function postRoomBroadcast(
@@ -1018,7 +1025,8 @@ export function subscribeOnlineRoom(
   onError?: (error: Error) => void,
   onLeaveSignal?: (playerId: string) => void,
   onKickSignal?: (playerId: string, name: string) => void,
-): RoomSubscription {
+  onStampSignal?: (payload: StampPayload) => void,
+): OnlineRoomSubscription {
   const supabase = getSupabase();
   let alive = true;
 
@@ -1056,6 +1064,10 @@ export function subscribeOnlineRoom(
     .on("broadcast", { event: SYNC_EVENT }, () => {
       void refresh();
     })
+    .on("broadcast", { event: STAMP_EVENT }, ({ payload }) => {
+      const stamp = parseStampPayload(payload);
+      if (alive && stamp) onStampSignal?.(stamp);
+    })
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "rooms", filter: `id=eq.${roomId}` },
@@ -1083,6 +1095,10 @@ export function subscribeOnlineRoom(
     unsubscribe: () => {
       alive = false;
       void supabase.removeChannel(channel);
+    },
+    sendStamp: (payload) => {
+      if (!alive) return;
+      void channel.send({ type: "broadcast", event: STAMP_EVENT, payload });
     },
   };
 }
