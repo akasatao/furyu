@@ -1,10 +1,12 @@
 import {
   clampShirazuDraft,
   locateShirazuMora,
+  normalizeFreeShirazuUnit,
   normalizeShirazuMora,
   poemMoraCount,
   SHIRAZU_MORA_PER_POEM,
   splitShirazuUnit,
+  lineUnits,
 } from "@/lib/shirazu";
 import { EMPTY_FALLBACK, MODE_LABEL } from "@/lib/constants";
 import {
@@ -19,6 +21,7 @@ import type {
   Poem,
   Player,
   ShirazuRevealState,
+  ShirazuStyle,
   ShirazuTurnState,
   TurnState,
 } from "@/types/game";
@@ -45,15 +48,38 @@ function applyLine(
   return { ...poem, lines };
 }
 
+function appendUnitsToPoem(
+  poem: Poem,
+  startMoraPos: number,
+  parts: string[],
+): Poem {
+  const lines = [...poem.lines];
+  let moraPos = startMoraPos;
+  for (const part of parts) {
+    const { lineIndex } = locateShirazuMora(moraPos);
+    const prev = lines[lineIndex];
+    const prevUnits = lineUnits(prev);
+    const nextUnits = [...prevUnits, part];
+    lines[lineIndex] = {
+      text: nextUnits.join(""),
+      units: nextUnits,
+      ...SHIRAZU_AUTHOR,
+    };
+    moraPos += 1;
+  }
+  return { ...poem, lines };
+}
+
 /**
  * 手元の短冊へ単位を追記する。
- * って＝2音は、五・七・五の境をまたいでも1音ずつ正しい句へ入れる。
+ * しっかり・自由律とも1提出＝1枠（parts は通常1要素）。
  */
 export function applyShirazuCharToPoem(
   poems: Poem[],
   poemIndex: number,
   _roundIndex: number,
   raw: string,
+  style: ShirazuStyle = "strict",
 ): Poem[] {
   return poems.map((poem, pi) => {
     if (pi !== poemIndex) return poem;
@@ -61,26 +87,22 @@ export function applyShirazuCharToPoem(
     const filled = poemMoraCount(poem);
     if (filled >= SHIRAZU_MORA_PER_POEM) return poem;
 
-    const unit =
-      normalizeShirazuMora(raw) ||
-      normalizeShirazuMora(clampShirazuDraft(raw)) ||
-      "ん";
-    const parts = splitShirazuUnit(unit);
-    if (parts.length === 0) return poem;
-    if (filled + parts.length > SHIRAZU_MORA_PER_POEM) return poem;
-
-    const lines = [...poem.lines];
-    let moraPos = filled;
-    for (const part of parts) {
-      const { lineIndex } = locateShirazuMora(moraPos);
-      const prev = lines[lineIndex]?.text ?? "";
-      lines[lineIndex] = {
-        text: prev + part,
-        ...SHIRAZU_AUTHOR,
-      };
-      moraPos += 1;
+    let parts: string[];
+    if (style === "free") {
+      const unit = normalizeFreeShirazuUnit(raw);
+      if (!unit) return poem;
+      parts = [unit];
+    } else {
+      const unit =
+        normalizeShirazuMora(raw) ||
+        normalizeShirazuMora(clampShirazuDraft(raw)) ||
+        "ん";
+      parts = splitShirazuUnit(unit);
+      if (parts.length === 0) return poem;
     }
-    return { ...poem, lines };
+
+    if (filled + parts.length > SHIRAZU_MORA_PER_POEM) return poem;
+    return appendUnitsToPoem(poem, filled, parts);
   });
 }
 
@@ -131,12 +153,21 @@ export function applyShirazuRoundSubmit(args: {
   draft: string;
   playerId: string;
   playerCount: number;
+  style?: ShirazuStyle;
 }): {
   poems: Poem[];
   done: boolean;
   nextTurn: TurnState | null;
 } {
-  const { poems, turn, poemIndex, draft, playerId, playerCount } = args;
+  const {
+    poems,
+    turn,
+    poemIndex,
+    draft,
+    playerId,
+    playerCount,
+    style = "strict",
+  } = args;
 
   if (turn.submittedIds.includes(playerId)) {
     return { poems, done: false, nextTurn: turn };
@@ -146,10 +177,9 @@ export function applyShirazuRoundSubmit(args: {
   const filled = hand ? poemMoraCount(hand) : 0;
   const alreadyComplete = filled >= SHIRAZU_MORA_PER_POEM;
 
-  // 完成済み短冊は書かずスキップ提出
   const updated = alreadyComplete
     ? poems
-    : applyShirazuCharToPoem(poems, poemIndex, turn.roundIndex, draft);
+    : applyShirazuCharToPoem(poems, poemIndex, turn.roundIndex, draft, style);
 
   const submittedIds = [...turn.submittedIds, playerId];
   const settled = settleShirazuRound(

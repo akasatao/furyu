@@ -50,8 +50,10 @@ import {
 } from "@/lib/online/rooms";
 import type { OnlineRoomSnapshot } from "@/lib/online/types";
 import {
+  canSubmitFreeShirazuUnit,
   canSubmitShirazuUnit,
   clampShirazuDraft,
+  normalizeFreeShirazuUnit,
   normalizeShirazuMora,
   poemMoraCount,
   SHIRAZU_MORA_PER_POEM,
@@ -78,6 +80,7 @@ import type {
   GamePhase,
   Player,
   Poem,
+  ShirazuStyle,
   TurnState,
   VerseMode,
 } from "@/types/game";
@@ -129,6 +132,8 @@ export function GameApp() {
   const [poemHistory, setPoemHistory] = useState<PoemHistoryEntry[]>([]);
   /** お題。空＝なし */
   const [theme, setTheme] = useState("");
+  /** リレー流派 */
+  const [shirazuStyle, setShirazuStyle] = useState<ShirazuStyle>("strict");
 
   const subRef = useRef<RoomSubscription | null>(null);
   const fadingRef = useRef(false);
@@ -263,6 +268,9 @@ export function GameApp() {
       );
       setTheme(
         typeof snapshot.room.theme === "string" ? snapshot.room.theme : "",
+      );
+      setShirazuStyle(
+        snapshot.room.shirazu_style === "free" ? "free" : "strict",
       );
       const nextPoems = snapshot.room.poems ?? [];
       setPoems(nextPoems);
@@ -594,6 +602,7 @@ export function GameApp() {
     count?: number,
     verseMode?: VerseMode,
     themeOverride?: string,
+    styleOverride?: ShirazuStyle,
   ) => {
     const activeMode = verseMode ?? mode;
     const maxPlayers = clampPlayerCount(activeMode, count ?? playerCount);
@@ -601,11 +610,19 @@ export function GameApp() {
       themeOverride !== undefined
         ? themeOverride.trim().slice(0, THEME_MAX_LENGTH)
         : theme;
+    const activeStyle =
+      activeMode === "shirazu"
+        ? styleOverride === "free" ||
+          (styleOverride === undefined && shirazuStyle === "free")
+          ? "free"
+          : "strict"
+        : "strict";
     if (verseMode) setMode(activeMode);
     if (themeOverride !== undefined) setTheme(activeTheme);
+    if (activeMode === "shirazu") setShirazuStyle(activeStyle);
     setPlayerCount(maxPlayers);
-    // ソロ可モードの複数人は「どう詠む？」へ。リレーはお題へ
-    lobbyBackStepRef.current = modeAllowsSolo(activeMode) ? "setup" : "theme";
+    // ソロ可モードの複数人は「どう詠む？」へ。リレーは流派選択へ
+    lobbyBackStepRef.current = modeAllowsSolo(activeMode) ? "setup" : "style";
     // 一人はローカルですぐ詠み始める（部屋作成の待ち時間なし）
     if (maxPlayers === 1) {
       setBusy(true);
@@ -641,6 +658,7 @@ export function GameApp() {
             mode: activeMode,
             maxPlayers,
             theme: activeTheme,
+            shirazuStyle: activeStyle,
           });
           flushSync(() => {
             setNickname(displayName);
@@ -828,7 +846,9 @@ export function GameApp() {
     if (!turn) return;
     if (isShirazuTurn(turn)) {
       if (turn.submittedIds.includes(myId)) return;
-      setLocalDraft(clampShirazuDraft(value));
+      setLocalDraft(
+        shirazuStyle === "free" ? value : clampShirazuDraft(value),
+      );
       return;
     }
     if (!isLineTurn(turn)) return;
@@ -851,7 +871,9 @@ export function GameApp() {
     }
 
     let draft = shirazu
-      ? normalizeShirazuMora(localDraft)
+      ? shirazuStyle === "free"
+        ? normalizeFreeShirazuUnit(localDraft)
+        : normalizeShirazuMora(localDraft)
       : localDraft.trim();
 
     let shirazuPoemIndex = -1;
@@ -868,7 +890,12 @@ export function GameApp() {
       if (remaining <= 0) {
         shirazuSkip = true;
         draft = "";
-      } else if (!draft || !canSubmitShirazuUnit(draft, remaining)) {
+      } else if (
+        !draft ||
+        !(shirazuStyle === "free"
+          ? canSubmitFreeShirazuUnit(draft, remaining)
+          : canSubmitShirazuUnit(draft, remaining))
+      ) {
         return;
       }
     } else if (!draft) {
@@ -887,6 +914,7 @@ export function GameApp() {
           shirazuPoemIndex,
           turn.roundIndex,
           draft,
+          shirazuStyle,
         ),
       );
       setLocalDraft("");
@@ -1156,11 +1184,13 @@ export function GameApp() {
             mode={mode}
             theme={theme}
             onThemeChange={setTheme}
+            shirazuStyle={shirazuStyle}
+            onShirazuStyleChange={setShirazuStyle}
             playerCount={playerCount}
             onModeChange={handleModeChange}
             onPlayerCountChange={setPlayerCount}
-            onCreateRoom={(count, verseMode, nextTheme) =>
-              handleCreateRoom(count, verseMode, nextTheme)
+            onCreateRoom={(count, verseMode, nextTheme, nextStyle) =>
+              handleCreateRoom(count, verseMode, nextTheme, nextStyle)
             }
             onJoinRoom={(id) => {
               void handleJoinRoom(id, false);
@@ -1178,6 +1208,7 @@ export function GameApp() {
             <WaitingLobby
               mode={mode}
               theme={theme}
+              shirazuStyle={shirazuStyle}
               players={players}
               spectators={spectators}
               myId={myId}
@@ -1206,6 +1237,7 @@ export function GameApp() {
             <SpectatePhase
               poems={poems}
               theme={theme}
+              shirazuStyle={shirazuStyle}
               note={
                 isLineTurn(turn) && writer
                   ? `${writer.name}が書いています`
@@ -1233,6 +1265,7 @@ export function GameApp() {
                 hasSubmitted={turn.submittedIds.includes(myId)}
                 myId={myId}
                 theme={theme}
+                shirazuStyle={shirazuStyle}
                 busy={busy}
                 onDraftChange={handleDraftChange}
                 onSubmit={() => {
@@ -1296,6 +1329,7 @@ export function GameApp() {
             <RevealPhase
               poems={poems}
               theme={theme}
+              shirazuStyle={shirazuStyle}
               roomId={roomId}
               revealReady={revealReady}
               revealPoemIndex={

@@ -3,6 +3,9 @@ export type GamePhase = "home" | "lobby" | "writing" | "reveal";
 /** 俳句=3句 / 短歌=5句 / リレーで風流=短冊回し一音リレーで人数分の俳句 */
 export type VerseMode = "haiku" | "tanka" | "shirazu";
 
+/** リレーの流派。しっかり=従来寄り / 自由律=枠に自由文字列 */
+export type ShirazuStyle = "strict" | "free";
+
 export type PlayerStatus = "idle" | "typing" | "submitted";
 
 export interface Player {
@@ -23,6 +26,8 @@ export interface PoemLine {
   text: string;
   authorId: string;
   authorName: string;
+  /** リレー：音枠ごとの文字列（1枠＝1要素）。無い旧データは text から復元 */
+  units?: string[];
 }
 
 export interface Poem {
@@ -32,6 +37,8 @@ export interface Poem {
   /** リレー：最初の一音を書いた人（その短冊の主） */
   ownerId?: string;
   ownerName?: string;
+  /** リレー流派。未設定の旧データは strict 扱い */
+  shirazuStyle?: ShirazuStyle;
 }
 
 /** 俳句・短歌：1人ずつ句を書く */

@@ -1,4 +1,11 @@
-import type { GamePhase, Poem, Player, TurnState, VerseMode } from "@/types/game";
+import type {
+  GamePhase,
+  Poem,
+  Player,
+  ShirazuStyle,
+  TurnState,
+  VerseMode,
+} from "@/types/game";
 
 /** 連衆は進行に入る。観戦は席を持たず、人数にも数えない */
 export type MemberRole = "player" | "spectator";
@@ -15,6 +22,8 @@ export interface RoomRow {
   turn: TurnState | null;
   /** お題。空文字＝なし */
   theme: string;
+  /** リレー流派。俳句・短歌は strict */
+  shirazu_style: ShirazuStyle;
   created_at: string;
 }
 
@@ -38,6 +47,7 @@ export interface OpenRoomSummary {
   mode: VerseMode;
   phase: "lobby" | "writing" | "reveal";
   theme: string;
+  shirazuStyle: ShirazuStyle;
   hostName: string;
   /** 連衆だけ。観戦は含まない */
   playerCount: number;

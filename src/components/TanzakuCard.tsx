@@ -1,7 +1,7 @@
 "use client";
 
+import { ShirazuLineSlots } from "@/components/ShirazuLineSlots";
 import { MODE_LABEL, PART_LABELS, PART_TARGETS } from "@/lib/constants";
-import { formatShirazuLineWithSlots } from "@/lib/shirazu";
 import { shirazuOwnerLabel } from "@/lib/utils";
 import type { Poem } from "@/types/game";
 
@@ -31,6 +31,7 @@ export function TanzakuCard({
 }: TanzakuCardProps) {
   const labels = PART_LABELS[poem.mode];
   const isShirazu = poem.mode === "shirazu";
+  const free = isShirazu && poem.shirazuStyle === "free";
   const ownerLabel = shirazuOwnerLabel(poem, viewerId);
   const showAnonymous = (anonymous || isShirazu) && !ownerLabel;
   /** キャプチャ時は常に全文。それ以外は writing が立つまで実字を出さない */
@@ -91,6 +92,7 @@ export function TanzakuCard({
                   : isLast
                     ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
                     : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
+              const target = PART_TARGETS.shirazu[i] ?? 5;
               return (
                 <span
                   key={i}
@@ -104,7 +106,16 @@ export function TanzakuCard({
                         }
                   }
                 >
-                  {line?.text ?? "？"}
+                  {isShirazu ? (
+                    <ShirazuLineSlots
+                      line={line}
+                      target={target}
+                      free={free}
+                      dimEmpty={false}
+                    />
+                  ) : (
+                    (line?.text ?? "？")
+                  )}
                 </span>
               );
             })}
@@ -125,7 +136,11 @@ export function TanzakuCard({
                     : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
               return (
                 <span key={i} className={`${offset} block`.trim()}>
-                  {formatShirazuLineWithSlots("", target)}
+                  <ShirazuLineSlots
+                    line={null}
+                    target={target}
+                    free={free}
+                  />
                 </span>
               );
             })}

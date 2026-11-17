@@ -1,11 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MODE_LABEL } from "@/lib/constants";
+import { ShirazuLineSlots } from "@/components/ShirazuLineSlots";
 import {
+  MODE_LABEL,
+  SHIRAZU_STYLE_LABEL,
+} from "@/lib/constants";
+import {
+  canSubmitFreeShirazuUnit,
   canSubmitShirazuUnit,
   clampShirazuDraft,
-  formatShirazuLineWithSlots,
   locateShirazuMora,
   poemMoraCount,
   SHIRAZU_LINE_TARGETS,
@@ -14,7 +18,7 @@ import {
   shirazuUnitMoraCount,
 } from "@/lib/shirazu";
 import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
-import type { Poem } from "@/types/game";
+import type { Poem, ShirazuStyle } from "@/types/game";
 
 const LINE_NAMES = ["上の句", "中の句", "下の句"] as const;
 
@@ -27,12 +31,13 @@ interface ShirazuWritingPhaseProps {
   hasSubmitted: boolean;
   myId?: string;
   theme?: string;
+  shirazuStyle?: ShirazuStyle;
   busy?: boolean;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
 }
 
-/** リレー執筆：手元の短冊に一音ずつ書き込む */
+/** リレー執筆：手元の短冊に一音／一枠ずつ書き込む */
 export function ShirazuWritingPhase({
   poem,
   roundIndex,
@@ -42,10 +47,12 @@ export function ShirazuWritingPhase({
   hasSubmitted,
   myId,
   theme = "",
+  shirazuStyle = "strict",
   busy = false,
   onDraftChange,
   onSubmit,
 }: ShirazuWritingPhaseProps) {
+  const free = shirazuStyle === "free";
   const [composing, setComposing] = useState(false);
   const [localDraft, setLocalDraft] = useState(draft);
   const [inputFocused, setInputFocused] = useState(false);
@@ -57,21 +64,24 @@ export function ShirazuWritingPhase({
   const complete = remaining === 0;
   const progressLabel =
     filled < SHIRAZU_MORA_PER_POEM
-      ? shirazuRoundProgressLabel(filled)
+      ? shirazuRoundProgressLabel(filled, shirazuStyle)
       : "完成";
   const moraLoc =
     filled < SHIRAZU_MORA_PER_POEM ? locateShirazuMora(filled) : null;
+  const unitLabel = free ? "枠" : "音";
   const moraProgress = moraLoc
-    ? `${toKanji(moraLoc.moraInLine + 1)}／${toKanji(moraLoc.lineTarget)}音`
+    ? `${toKanji(moraLoc.moraInLine + 1)}／${toKanji(moraLoc.lineTarget)}${unitLabel}`
     : "完成";
   const partHeading = moraLoc
     ? (LINE_NAMES[moraLoc.lineIndex] ?? "上の句")
-    : "短冊は埋まりました";
-  const unitMora = shirazuUnitMoraCount(draft);
+    : free
+      ? "短冊は埋まりました"
+      : "短冊は埋まりました";
+  const unitMora = free ? (draft.length > 0 ? 1 : 0) : shirazuUnitMoraCount(draft);
   const finishesPoem = !complete && unitMora > 0 && unitMora >= remaining;
   const ownerLabel = shirazuOwnerLabel(poem, myId);
-  /** スマホ＋キーボード時だけ横並びコンパクト表示 */
   const compact = inputFocused && isNarrow;
+  const styleLabel = SHIRAZU_STYLE_LABEL[shirazuStyle];
 
   const endInputMode = useCallback(() => {
     setInputFocused(false);
@@ -131,10 +141,13 @@ export function ShirazuWritingPhase({
     !busy &&
     !hasSubmitted &&
     !composing &&
-    (complete || canSubmitShirazuUnit(draft, remaining));
+    (complete ||
+      (free
+        ? canSubmitFreeShirazuUnit(draft, remaining)
+        : canSubmitShirazuUnit(draft, remaining)));
 
   const commitDraft = (raw: string) => {
-    const next = clampShirazuDraft(raw);
+    const next = free ? raw : clampShirazuDraft(raw);
     setLocalDraft(next);
     onDraftChange(next);
   };
@@ -146,14 +159,6 @@ export function ShirazuWritingPhase({
     const vv = window.visualViewport;
     if (vv) viewportHeightRef.current = vv.height;
   };
-
-  const poemLines = poem.lines.map((line, i) => {
-    const target = SHIRAZU_LINE_TARGETS[i] ?? 5;
-    return {
-      name: LINE_NAMES[i] ?? `${toKanji(i + 1)}句`,
-      text: formatShirazuLineWithSlots(line?.text ?? "", target),
-    };
-  });
 
   return (
     <div
@@ -173,8 +178,9 @@ export function ShirazuWritingPhase({
             compact ? "text-[9px]" : "text-[10px] md:text-sm"
           }`}
         >
-          {MODE_LABEL.shirazu}　{toKanji(filled)}／
-          {toKanji(SHIRAZU_MORA_PER_POEM)}音
+          {styleLabel}　{toKanji(filled)}／
+          {toKanji(SHIRAZU_MORA_PER_POEM)}
+          {unitLabel}
           {compact ? `　${progressLabel}` : ""}
         </p>
         {!compact && (
@@ -253,8 +259,8 @@ export function ShirazuWritingPhase({
               }`}
               lang="ja"
             >
-              {poemLines.map((line, i) => {
-                const isLast = i === poemLines.length - 1;
+              {SHIRAZU_LINE_TARGETS.map((target, i) => {
+                const isLast = i === SHIRAZU_LINE_TARGETS.length - 1;
                 const offset = compact
                   ? i === 0
                     ? ""
@@ -268,10 +274,14 @@ export function ShirazuWritingPhase({
                       : "mt-4";
                 return (
                   <span
-                    key={line.name}
+                    key={LINE_NAMES[i] ?? i}
                     className={`${offset} block min-h-[1em]`.trim()}
                   >
-                    {line.text}
+                    <ShirazuLineSlots
+                      line={poem.lines[i]}
+                      target={target}
+                      free={free}
+                    />
                   </span>
                 );
               })}
@@ -306,7 +316,7 @@ export function ShirazuWritingPhase({
         ) : complete ? (
           <div className="w-full shrink-0 space-y-2 pb-2">
             <p className="text-center text-sm tracking-widest text-black/55">
-              この短冊はすでに十七音です
+              この短冊はすでに十七{unitLabel}です
             </p>
             <button
               type="button"
@@ -324,7 +334,7 @@ export function ShirazuWritingPhase({
                 htmlFor="shirazu-mora-input"
                 className="text-sm tracking-widest text-black/70"
               >
-                あなたの一音
+                {free ? "あなたの一句" : "あなたの一音"}
               </label>
             )}
             <input
@@ -363,10 +373,16 @@ export function ShirazuWritingPhase({
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === "Enter" && canSubmit) onSubmit();
               }}
-              className={`brush-input w-full px-4 text-center tracking-[0.5em] ${
+              className={`brush-input w-full px-4 text-center ${
+                free ? "tracking-[0.15em]" : "tracking-[0.5em]"
+              } ${
                 compact
-                  ? "py-2 text-2xl"
-                  : "py-3 text-3xl md:py-[clamp(0.75rem,2dvh,1rem)] md:text-[clamp(1.75rem,4.5dvh,2.25rem)]"
+                  ? free
+                    ? "py-2 text-lg"
+                    : "py-2 text-2xl"
+                  : free
+                    ? "py-3 text-xl md:py-[clamp(0.75rem,2dvh,1rem)] md:text-[clamp(1.25rem,3.5dvh,1.75rem)]"
+                    : "py-3 text-3xl md:py-[clamp(0.75rem,2dvh,1rem)] md:text-[clamp(1.75rem,4.5dvh,2.25rem)]"
               }`}
               autoFocus
             />

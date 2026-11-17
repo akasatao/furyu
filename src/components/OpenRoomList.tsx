@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FitText } from "@/components/FitText";
-import { MODE_LABEL } from "@/lib/constants";
+import { roomModeLabel } from "@/lib/constants";
 import { subscribeOpenRooms } from "@/lib/online/rooms";
 import type { OpenRoomSummary } from "@/lib/online/types";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
@@ -99,7 +99,7 @@ export function OpenRoomList({
                 <div className="flex flex-col gap-1">
                   <span className="flex w-full items-baseline justify-between gap-2">
                     <span className="min-w-0 truncate text-lg tracking-[0.2em] md:text-xl">
-                      {MODE_LABEL[room.mode]}
+                      {roomModeLabel(room.mode, room.shirazuStyle)}
                     </span>
                     <span className="shrink-0 text-sm tracking-wider text-black/55">
                       {status ? `${status}　` : ""}

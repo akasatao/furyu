@@ -9,7 +9,7 @@ import {
   PLAYER_COUNT_RANGE,
 } from "@/lib/constants";
 import { shirazuTotalSteps } from "@/lib/shirazu";
-import type { Poem, PoemLine, VerseMode } from "@/types/game";
+import type { Poem, PoemLine, ShirazuStyle, VerseMode } from "@/types/game";
 
 const KANJI_DIGITS = ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九"] as const;
 
@@ -66,11 +66,18 @@ export function clampPlayerCount(mode: VerseMode, count: number): number {
   return Math.min(max, Math.max(min, count));
 }
 
-export function createBlankPoem(mode: VerseMode, id: string): Poem {
+export function createBlankPoem(
+  mode: VerseMode,
+  id: string,
+  shirazuStyle?: ShirazuStyle,
+): Poem {
   return {
     id,
     mode,
     lines: Array.from({ length: LINE_COUNT[mode] }, () => null),
+    ...(mode === "shirazu"
+      ? { shirazuStyle: shirazuStyle === "free" ? "free" : "strict" }
+      : {}),
   };
 }
 
@@ -79,10 +86,11 @@ export function createBlankPoems(
   mode: VerseMode,
   playerCount: number,
   idPrefix: string,
+  shirazuStyle?: ShirazuStyle,
 ): Poem[] {
   if (mode === "shirazu") {
     return Array.from({ length: playerCount }, (_, i) =>
-      createBlankPoem("shirazu", `${idPrefix}_${i}`),
+      createBlankPoem("shirazu", `${idPrefix}_${i}`, shirazuStyle),
     );
   }
   return [createBlankPoem(mode, idPrefix)];

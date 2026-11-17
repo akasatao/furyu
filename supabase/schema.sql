@@ -13,6 +13,9 @@ create table if not exists public.rooms (
   poems jsonb not null default '[]'::jsonb,
   turn jsonb,
   theme text not null default '',
+  -- リレー: strict=しっかり / free=自由律。俳句・短歌は未使用（strict）
+  shirazu_style text not null default 'strict'
+    check (shirazu_style in ('strict', 'free')),
   created_at timestamptz not null default now(),
   -- 在室中だけ更新する。途切れた部屋は一覧から外し、行も消す
   last_seen timestamptz not null default now()
@@ -24,6 +27,22 @@ alter table public.rooms
 
 alter table public.rooms
   add column if not exists last_seen timestamptz not null default now();
+
+alter table public.rooms
+  add column if not exists shirazu_style text not null default 'strict';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'rooms_shirazu_style_check'
+  ) then
+    alter table public.rooms
+      add constraint rooms_shirazu_style_check
+      check (shirazu_style in ('strict', 'free'));
+  end if;
+end $$;
 
 create table if not exists public.room_players (
   id uuid primary key default gen_random_uuid(),

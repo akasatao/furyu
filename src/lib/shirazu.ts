@@ -1,5 +1,6 @@
 import { moraCountFromKana } from "@/lib/mora";
 import { toKanji } from "@/lib/utils";
+import type { ShirazuStyle } from "@/types/game";
 
 /** リレーで風流：五・七・五＝十七音を人数分。各ラウンド全員が一音書いて短冊を回す */
 export const SHIRAZU_LINE_TARGETS = [5, 7, 5] as const;
@@ -122,10 +123,14 @@ export function locateShirazuStep(stepIndex: number): ShirazuLocation {
 }
 
 /** 執筆中の進捗（手元の短冊基準。首番号は出さない） */
-export function shirazuRoundProgressLabel(roundIndex: number): string {
+export function shirazuRoundProgressLabel(
+  roundIndex: number,
+  style: ShirazuStyle = "strict",
+): string {
   const { lineIndex, moraInLine, lineTarget } = locateShirazuMora(roundIndex);
   const lineNames = ["上の句", "中の句", "下の句"];
-  return `${lineNames[lineIndex]}（${toKanji(moraInLine + 1)}／${toKanji(lineTarget)}音）`;
+  const unit = style === "free" ? "枠" : "音";
+  return `${lineNames[lineIndex]}（${toKanji(moraInLine + 1)}／${toKanji(lineTarget)}${unit}）`;
 }
 
 /** @deprecated 旧ラベル。shirazuRoundProgressLabel を使う */
@@ -144,8 +149,8 @@ function isKanji(ch: string): boolean {
   return /[\u3400-\u4dbf\u4e00-\u9fff々]/.test(ch);
 }
 
-/** 全角英字→半角、カタカナ→ひらがな */
-function normalizeChar(ch: string): string | null {
+/** 全角英字→半角、カタカナ→ひらがな。漢字は捨てる（しっかり風流） */
+function normalizeStrictChar(ch: string): string | null {
   if (ch >= "Ａ" && ch <= "Ｚ") {
     return String.fromCharCode(ch.charCodeAt(0) - 0xfee0);
   }
@@ -155,17 +160,18 @@ function normalizeChar(ch: string): string | null {
   if (ch >= "ァ" && ch <= "ヶ") {
     return String.fromCharCode(ch.charCodeAt(0) - 0x60);
   }
-  if (ch === "ー" || /[ぁ-ん]/.test(ch) || isLatinLetter(ch) || isKanji(ch)) {
+  if (isKanji(ch)) return null;
+  if (ch === "ー" || /[ぁ-ん]/.test(ch) || isLatinLetter(ch)) {
     return ch;
   }
   return null;
 }
 
-/** 許可文字だけ残す（ひらがな・漢字・英字）。カタカナ・全角英字は半角／ひらがなへ */
+/** 許可文字だけ残す（ひらがな・英字。漢字不可）。カタカナ・全角英字は半角／ひらがなへ */
 export function toAllowedShirazuChars(text: string): string {
   let out = "";
   for (const ch of text) {
-    const n = normalizeChar(ch);
+    const n = normalizeStrictChar(ch);
     if (n) out += n;
   }
   return out;
@@ -182,22 +188,9 @@ function isYoonPair(base: string, small: string): boolean {
   return YOON_SET.has(base + small);
 }
 
-/** 普通のひらがな（小書き以外）。促音の直後に付けられる字 */
-function isPlainHiragana(ch: string): boolean {
-  return (
-    /[ぁ-ん]/.test(ch) &&
-    !/[ぁぃぅぇぉゃゅょゎっ]/.test(ch)
-  );
-}
-
-/** っ＋普通ひらがな（って など）＝二音 */
-function isSokuonCluster(first: string, second: string): boolean {
-  return first === "っ" && isPlainHiragana(second);
-}
-
 /**
- * 入力中の下書きを最大一単位まで残す。
- * 一音／拗音／っ＋次の字（って等）／漢字／英字。
+ * 入力中の下書きを最大一単位まで残す（しっかり風流）。
+ * 一音／拗音／っ（単体）／英字。漢字不可。
  */
 export function clampShirazuDraft(raw: string): string {
   const allowed = toAllowedShirazuChars(raw);
@@ -206,17 +199,14 @@ export function clampShirazuDraft(raw: string): string {
   const first = chars[0] ?? "";
   const second = chars[1] ?? "";
 
-  // 英字・漢字は一文字だけ
-  if (isLatinLetter(first) || isKanji(first)) return first;
+  // 英字は一文字だけ
+  if (isLatinLetter(first)) return first;
 
   // 先頭が小書き（っ以外）なら捨てる
   if (/[ぁぃぅぇぉゃゅょゎ]/.test(first)) return "";
 
-  // っ＋て など（入力中はっだけでも残す）
-  if (first === "っ") {
-    if (second && isPlainHiragana(second)) return first + second;
-    return first;
-  }
+  // っは単体のみ
+  if (first === "っ") return first;
 
   if (SOLO_MORA.has(first) || !YOON_BASES.has(first)) {
     return first;
@@ -228,19 +218,18 @@ export function clampShirazuDraft(raw: string): string {
   return first;
 }
 
-/** 提出可能な単位か（一音／拗音／って等／漢字／英字） */
+/** 提出可能な単位か（一音／拗音／っ単体／英字） */
 export function isValidShirazuMora(raw: string): boolean {
   const unit = clampShirazuDraft(raw);
   if (!unit) return false;
   const chars = [...unit];
   if (chars.length === 1) {
-    if (isLatinLetter(chars[0]) || isKanji(chars[0])) return true;
+    if (isLatinLetter(chars[0])) return true;
     return (
       /[ぁ-んー]/.test(chars[0]) && !/[ぁぃぅぇぉゃゅょゎ]/.test(chars[0])
     );
   }
   if (chars.length === 2) {
-    if (isSokuonCluster(chars[0], chars[1])) return true;
     return isYoonPair(chars[0], chars[1]) && moraCountFromKana(unit) === 1;
   }
   return false;
@@ -252,25 +241,28 @@ export function normalizeShirazuMora(raw: string): string {
   return isValidShirazuMora(unit) ? unit : "";
 }
 
-/** 提出単位の音数（って＝2、きゃ＝1） */
+/** 自由律：空でなければそのまま1枠 */
+export function normalizeFreeShirazuUnit(raw: string): string {
+  return raw.length > 0 ? raw : "";
+}
+
+export function isValidFreeShirazuUnit(raw: string): boolean {
+  return normalizeFreeShirazuUnit(raw).length > 0;
+}
+
+/** 提出単位の音数（しっかりは常に1、きゃ＝1） */
 export function shirazuUnitMoraCount(raw: string): number {
   const unit = normalizeShirazuMora(raw);
-  if (!unit) return 0;
-  return shirazuMoraCount(unit);
+  return unit ? 1 : 0;
 }
 
-/** 正規化済み単位を1音ずつの文字列に分割（てに付くっも分ける） */
+/** 正規化済み単位を1音ずつの文字列に分割 */
 export function splitShirazuUnit(raw: string): string[] {
   const unit = normalizeShirazuMora(raw);
-  if (!unit) return [];
-  const chars = [...unit];
-  if (chars.length === 2 && isSokuonCluster(chars[0], chars[1])) {
-    return [chars[0], chars[1]];
-  }
-  return [unit];
+  return unit ? [unit] : [];
 }
 
-/** 句を表示用の音単位に分割（きゃ＝1枠、っ／ては各1枠） */
+/** 句を表示用の音単位に分割（きゃ＝1枠） */
 export function splitShirazuLineIntoMoras(line: string): string[] {
   const chars = [...toAllowedShirazuChars(line)];
   const units: string[] = [];
@@ -278,7 +270,7 @@ export function splitShirazuLineIntoMoras(line: string): string[] {
   while (i < chars.length) {
     const a = chars[i] ?? "";
     const b = chars[i + 1] ?? "";
-    if (isLatinLetter(a) || isKanji(a)) {
+    if (isLatinLetter(a)) {
       units.push(a);
       i += 1;
       continue;
@@ -300,9 +292,13 @@ export function splitShirazuLineIntoMoras(line: string): string[] {
   return units;
 }
 
-/** 句に含まれる音数（ひらがな拗音＋漢字＋英字は各1。っ＋ては2） */
-export function shirazuMoraCount(line: string): number {
-  return splitShirazuLineIntoMoras(line).length;
+/** 行の音枠配列。units があればそれを使い、無ければ text から復元 */
+export function lineUnits(
+  line: { text: string; units?: string[] } | null | undefined,
+): string[] {
+  if (!line) return [];
+  if (Array.isArray(line.units)) return line.units;
+  return splitShirazuLineIntoMoras(line.text ?? "");
 }
 
 /**
@@ -319,31 +315,52 @@ export function formatShirazuLineWithSlots(
   for (let i = 0; i < target; i += 1) {
     slots.push(filled[i] ?? "〇");
   }
-  // 枠超過分（理論上まれ）も落とさず見せる
   if (filled.length > target) {
     slots.push(...filled.slice(target));
   }
   return slots.join("");
 }
 
-/** 短冊全体の音数 */
-export function poemMoraCount(poem: {
-  lines: ({ text: string } | null)[];
-}): number {
-  return poem.lines.reduce(
-    (sum, line) => sum + shirazuMoraCount(line?.text ?? ""),
-    0,
-  );
+/** 行の枠配列（空枠は〇）。units 優先 */
+export function shirazuLineSlotUnits(
+  line: { text: string; units?: string[] } | null | undefined,
+  lineTarget: number,
+): string[] {
+  const filled = lineUnits(line);
+  const target = Math.max(0, lineTarget);
+  const slots: string[] = [];
+  for (let i = 0; i < target; i += 1) {
+    slots.push(filled[i] ?? "〇");
+  }
+  if (filled.length > target) {
+    slots.push(...filled.slice(target));
+  }
+  return slots;
 }
 
-/** 残りの音枠に収まる提出か */
+/** 短冊全体の音数／枠数 */
+export function poemMoraCount(poem: {
+  lines: ({ text: string; units?: string[] } | null)[];
+}): number {
+  return poem.lines.reduce((sum, line) => sum + lineUnits(line).length, 0);
+}
+
+/** 残りの音枠に収まる提出か（しっかり） */
 export function canSubmitShirazuUnit(
   raw: string,
   remainingMora: number,
 ): boolean {
   if (!isValidShirazuMora(raw)) return false;
-  const need = shirazuUnitMoraCount(raw);
-  return need > 0 && need <= remainingMora;
+  return remainingMora >= 1;
+}
+
+/** 残りの枠に収まる提出か（自由律） */
+export function canSubmitFreeShirazuUnit(
+  raw: string,
+  remainingSlots: number,
+): boolean {
+  if (!isValidFreeShirazuUnit(raw)) return false;
+  return remainingSlots >= 1;
 }
 
 const SINGLE_POOL = [
@@ -367,7 +384,6 @@ export function pickShirazuChar(builtLine: string, seed = ""): string {
     hash = (hash + seed.charCodeAt(i) * (i + 3)) % 9973;
   }
 
-  // だいたい単音、ときどき拗音
   const pool = hash % 7 === 0 ? MORA_POOL : SINGLE_POOL;
   return pool[hash % pool.length] ?? "ん";
 }

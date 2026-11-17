@@ -15,6 +15,7 @@ import {
   settleShirazuRound,
 } from "@/lib/online/submit";
 import {
+  canSubmitFreeShirazuUnit,
   canSubmitShirazuUnit,
   poemMoraCount,
   SHIRAZU_MORA_PER_POEM,
@@ -22,7 +23,7 @@ import {
   shirazuSeatOf,
 } from "@/lib/shirazu";
 import { modeAllowsSolo, THEME_MAX_LENGTH } from "@/lib/constants";
-import type { Player, TurnState, VerseMode } from "@/types/game";
+import type { Player, ShirazuStyle, TurnState, VerseMode } from "@/types/game";
 import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
 import {
   rowToPlayer,
@@ -32,12 +33,17 @@ import {
   type RoomRow,
 } from "@/lib/online/types";
 
+function normalizeShirazuStyle(value: unknown): ShirazuStyle {
+  return value === "free" ? "free" : "strict";
+}
+
 function asRoom(row: RoomRow): RoomRow {
   return {
     ...row,
     poems: Array.isArray(row.poems) ? row.poems : [],
     turn: row.turn ?? null,
     theme: typeof row.theme === "string" ? row.theme : "",
+    shirazu_style: normalizeShirazuStyle(row.shirazu_style),
   };
 }
 
@@ -82,28 +88,45 @@ export async function createOnlineRoom(options: {
   mode: VerseMode;
   maxPlayers: number;
   theme?: string;
+  shirazuStyle?: ShirazuStyle;
 }): Promise<OnlineRoomSnapshot> {
   const supabase = getSupabase();
   let code = randomRoomCode();
   let room: RoomRow | null = null;
   const theme = (options.theme ?? "").trim().slice(0, THEME_MAX_LENGTH);
+  const shirazuStyle =
+    options.mode === "shirazu"
+      ? normalizeShirazuStyle(options.shirazuStyle)
+      : "strict";
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const { data, error } = await supabase
+    const payload = {
+      code,
+      mode: options.mode,
+      max_players: options.maxPlayers,
+      phase: "lobby" as const,
+      host_id: options.playerId,
+      step_index: 0,
+      poems: [] as unknown[],
+      turn: null,
+      theme,
+      shirazu_style: shirazuStyle,
+    };
+    let { data, error } = await supabase
       .from("rooms")
-      .insert({
-        code,
-        mode: options.mode,
-        max_players: options.maxPlayers,
-        phase: "lobby",
-        host_id: options.playerId,
-        step_index: 0,
-        poems: [],
-        turn: null,
-        theme,
-      })
+      .insert(payload)
       .select("*")
       .single();
+
+    // 未マイグレーション DB 向け：カラム無しなら style 抜きで再試行
+    if (error && isMissingColumn(error, "shirazu_style")) {
+      const { shirazu_style: _omit, ...legacy } = payload;
+      ({ data, error } = await supabase
+        .from("rooms")
+        .insert(legacy)
+        .select("*")
+        .single());
+    }
 
     if (!error && data) {
       room = asRoom(data as RoomRow);
@@ -182,8 +205,14 @@ function toOpenPhase(phase: string): OpenRoomSummary["phase"] {
 
 type OpenRoomRow = Pick<
   RoomRow,
-  "id" | "mode" | "phase" | "max_players" | "theme" | "created_at"
+  | "id"
+  | "mode"
+  | "phase"
+  | "max_players"
+  | "theme"
+  | "created_at"
 > & {
+  shirazu_style?: ShirazuStyle;
   room_players: Pick<RoomPlayerRow, "name" | "is_host" | "role">[] | null;
 };
 
@@ -200,6 +229,7 @@ function summarizeOpenRooms(rows: OpenRoomRow[]): OpenRoomSummary[] {
         mode: row.mode,
         phase,
         theme: typeof row.theme === "string" ? row.theme : "",
+        shirazuStyle: normalizeShirazuStyle(row.shirazu_style),
         hostName: host?.name ?? "",
         playerCount,
         maxPlayers: row.max_players,
@@ -223,12 +253,22 @@ async function selectOpenRooms(
   const players = withRole
     ? "room_players(name, is_host, role)"
     : "room_players(name, is_host)";
-  const { data, error } = await supabase
+  const withStyle = `id, mode, phase, max_players, theme, shirazu_style, created_at, ${players}`;
+  const withoutStyle = `id, mode, phase, max_players, theme, created_at, ${players}`;
+  let { data, error } = await supabase
     .from("rooms")
-    .select(`id, mode, phase, max_players, theme, created_at, ${players}`)
+    .select(withStyle)
     .in("phase", ["lobby", "writing", "reveal"])
     .gte("last_seen", freshAfter)
     .order("last_seen", { ascending: false });
+  if (error && isMissingColumn(error, "shirazu_style")) {
+    ({ data, error } = await supabase
+      .from("rooms")
+      .select(withoutStyle)
+      .in("phase", ["lobby", "writing", "reveal"])
+      .gte("last_seen", freshAfter)
+      .order("last_seen", { ascending: false }));
+  }
   if (!error) {
     return { rows: (data ?? []) as unknown as OpenRoomRow[] };
   }
@@ -244,7 +284,7 @@ async function listOpenRoomsByAge(): Promise<OpenRoomSummary[]> {
   const listed = await supabase
     .from("rooms")
     .select(
-      "id, mode, phase, max_players, theme, created_at, room_players(name, is_host, role)",
+      "id, mode, phase, max_players, theme, shirazu_style, created_at, room_players(name, is_host, role)",
     )
     .in("phase", ["lobby", "writing", "reveal"])
     .gte("created_at", since)
@@ -255,7 +295,24 @@ async function listOpenRoomsByAge(): Promise<OpenRoomSummary[]> {
       (listed.data ?? []) as unknown as OpenRoomRow[],
     );
   }
-  if (!isMissingRoleColumn(listed.error)) throw listed.error;
+  if (isMissingColumn(listed.error, "shirazu_style")) {
+    const noStyle = await supabase
+      .from("rooms")
+      .select(
+        "id, mode, phase, max_players, theme, created_at, room_players(name, is_host, role)",
+      )
+      .in("phase", ["lobby", "writing", "reveal"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: false });
+    if (!noStyle.error) {
+      return summarizeAndDropEmpty(
+        (noStyle.data ?? []) as unknown as OpenRoomRow[],
+      );
+    }
+    if (!isMissingRoleColumn(noStyle.error)) throw noStyle.error;
+  } else if (!isMissingRoleColumn(listed.error)) {
+    throw listed.error;
+  }
 
   const legacy = await supabase
     .from("rooms")
@@ -670,7 +727,12 @@ export async function startOnlineGame(options: {
     ...p,
     partIndexes: parts[i] ?? [],
   }));
-  const blank = createBlankPoems(snapshot.room.mode, count, uid("poem"));
+  const blank = createBlankPoems(
+    snapshot.room.mode,
+    count,
+    uid("poem"),
+    normalizeShirazuStyle(snapshot.room.shirazu_style),
+  );
   const poems =
     snapshot.room.mode === "shirazu"
       ? assignShirazuOwners(blank, roster)
@@ -801,8 +863,17 @@ async function trySubmitShirazu(
   const hand = room.poems[poemIndex];
   const filled = hand ? poemMoraCount(hand) : 0;
   const remaining = SHIRAZU_MORA_PER_POEM - filled;
-  if (remaining > 0 && !canSubmitShirazuUnit(options.draft, remaining)) {
-    throw new Error("その一音は使えません。");
+  const style = normalizeShirazuStyle(room.shirazu_style);
+  if (remaining > 0) {
+    const ok =
+      style === "free"
+        ? canSubmitFreeShirazuUnit(options.draft, remaining)
+        : canSubmitShirazuUnit(options.draft, remaining);
+    if (!ok) {
+      throw new Error(
+        style === "free" ? "空では提出できません。" : "その一音は使えません。",
+      );
+    }
   }
   const applied = applyShirazuRoundSubmit({
     poems: room.poems,
@@ -811,6 +882,7 @@ async function trySubmitShirazu(
     draft: options.draft,
     playerId: options.playerId,
     playerCount: players.length,
+    style,
   });
 
   // 楽観ロック用：毎回 step_index を進める（ラウンド番号は turn が本体）

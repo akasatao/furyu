@@ -1,16 +1,15 @@
 "use client";
 
-import { MODE_LABEL, PART_LABELS } from "@/lib/constants";
-import {
-  SHIRAZU_LINE_TARGETS,
-  splitShirazuLineIntoMoras,
-} from "@/lib/shirazu";
+import { ShirazuLineSlots } from "@/components/ShirazuLineSlots";
+import { MODE_LABEL, PART_LABELS, roomModeLabel } from "@/lib/constants";
+import { SHIRAZU_LINE_TARGETS } from "@/lib/shirazu";
 import { shirazuOwnerLabel } from "@/lib/utils";
-import type { Poem } from "@/types/game";
+import type { Poem, ShirazuStyle } from "@/types/game";
 
 interface SpectatePhaseProps {
   poems: Poem[];
   theme?: string;
+  shirazuStyle?: ShirazuStyle;
   /** 俳句・短歌で、いま書いている人 */
   note?: string;
   busy?: boolean;
@@ -23,24 +22,13 @@ function lineGap(index: number, last: number): string {
   return "mt-3";
 }
 
-/** 提出済みの音は実字、空枠は〇 */
-function ShirazuSlots({ text, target }: { text: string; target: number }) {
-  const filled = splitShirazuLineIntoMoras(text);
-  const count = Math.max(target, filled.length);
-  const slots: string[] = [];
-  for (let i = 0; i < count; i += 1) slots.push(filled[i] ?? "〇");
-  return (
-    <>
-      {slots.map((unit, i) => (
-        <span key={i} className={unit === "〇" ? "text-black/30" : "text-black"}>
-          {unit}
-        </span>
-      ))}
-    </>
-  );
-}
-
-function ShirazuGallery({ poems }: { poems: Poem[] }) {
+function ShirazuGallery({
+  poems,
+  free,
+}: {
+  poems: Poem[];
+  free: boolean;
+}) {
   const dense = poems.length >= 5;
   const textClass = dense
     ? "text-[0.72rem] leading-[1.45] tracking-[0.08em]"
@@ -55,6 +43,7 @@ function ShirazuGallery({ poems }: { poems: Poem[] }) {
     >
       {poems.map((poem) => {
         const owner = shirazuOwnerLabel(poem, null);
+        const poemFree = free || poem.shirazuStyle === "free";
         return (
           <article key={poem.id} className="flex min-w-0 flex-col items-center gap-1.5">
             <p className="w-full truncate text-center text-[10px] tracking-widest text-black/55 md:text-xs">
@@ -68,7 +57,11 @@ function ShirazuGallery({ poems }: { poems: Poem[] }) {
                     key={i}
                     className={`${i === 0 ? "" : i === 2 ? "mt-6 md:mt-8" : "mt-2 md:mt-3"} block`}
                   >
-                    <ShirazuSlots text={poem.lines[i]?.text ?? ""} target={target} />
+                    <ShirazuLineSlots
+                      line={poem.lines[i]}
+                      target={target}
+                      free={poemFree}
+                    />
                   </span>
                 ))}
               </p>
@@ -113,12 +106,14 @@ function LineCard({ poem }: { poem: Poem }) {
 export function SpectatePhase({
   poems,
   theme = "",
+  shirazuStyle = "strict",
   note = "",
   busy = false,
   onLeave,
 }: SpectatePhaseProps) {
   const mode = poems[0]?.mode;
   const isShirazu = mode === "shirazu";
+  const free = shirazuStyle === "free";
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
@@ -137,7 +132,7 @@ export function SpectatePhase({
 
       <header className="space-y-1 text-center">
         <h2 className="text-2xl tracking-[0.3em] md:text-4xl">
-          {mode ? MODE_LABEL[mode] : "和室"}
+          {mode ? roomModeLabel(mode, shirazuStyle) : "和室"}
         </h2>
         {theme.trim() ? (
           <p className="text-sm tracking-[0.2em] text-black/60">
@@ -154,7 +149,7 @@ export function SpectatePhase({
           短冊を待っています
         </p>
       ) : isShirazu ? (
-        <ShirazuGallery poems={poems} />
+        <ShirazuGallery poems={poems} free={free} />
       ) : (
         <LineCard poem={poems[0]} />
       )}

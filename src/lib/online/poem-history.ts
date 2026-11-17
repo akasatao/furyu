@@ -1,13 +1,14 @@
 "use client";
 
 import { uid } from "@/lib/utils";
-import type { Poem, VerseMode } from "@/types/game";
+import type { Poem, ShirazuStyle, VerseMode } from "@/types/game";
 
 const KEY = "furyu_poem_history";
 const MAX_ENTRIES = 60;
 
 export type PoemHistoryLine = {
   text: string;
+  units?: string[];
   authorName?: string;
 };
 
@@ -21,6 +22,7 @@ export type PoemHistoryEntry = {
   ownerId?: string;
   ownerName?: string;
   theme?: string;
+  shirazuStyle?: ShirazuStyle;
 };
 
 function readRaw(): PoemHistoryEntry[] {
@@ -74,8 +76,10 @@ export function appendPoemsToHistory(
     ownerId: poem.ownerId,
     ownerName: poem.ownerName,
     theme,
+    shirazuStyle: poem.shirazuStyle,
     lines: poem.lines.map((line) => ({
       text: line?.text ?? "？",
+      units: line?.units,
       authorName: line?.authorName,
     })),
   }));
@@ -91,8 +95,10 @@ export function historyEntryToPoem(entry: PoemHistoryEntry): Poem {
     mode: entry.mode,
     ownerId: entry.ownerId,
     ownerName: entry.ownerName,
+    shirazuStyle: entry.shirazuStyle,
     lines: entry.lines.map((line) => ({
       text: line.text,
+      units: line.units,
       authorId: entry.ownerId ?? "",
       authorName: line.authorName ?? entry.ownerName ?? "—",
     })),

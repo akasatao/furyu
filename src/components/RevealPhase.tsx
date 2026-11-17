@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TanzakuCard } from "@/components/TanzakuCard";
-import { MODE_LABEL } from "@/lib/constants";
+import { MODE_LABEL, SHIRAZU_STYLE_LABEL } from "@/lib/constants";
 import { captureElementPng, downloadPngDataUrl } from "@/lib/export-tanzaku";
 import {
   hasLineRevealSeen,
@@ -11,7 +11,7 @@ import {
   markShirazuRevealStepSeen,
 } from "@/lib/reveal-progress";
 import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
-import type { Poem } from "@/types/game";
+import type { Poem, ShirazuStyle } from "@/types/game";
 
 /** タイトル＋空短冊を出してから書き始めるまでの間 */
 const BEFORE_WRITE_MS = 600;
@@ -19,6 +19,7 @@ const BEFORE_WRITE_MS = 600;
 interface RevealPhaseProps {
   poems: Poem[];
   theme?: string;
+  shirazuStyle?: ShirazuStyle;
   /** 披露演出の既読に使う（再表示で最初から再生しない） */
   roomId?: string | null;
   onRematch: () => void;
@@ -43,6 +44,7 @@ interface RevealPhaseProps {
 export function RevealPhase({
   poems,
   theme = "",
+  shirazuStyle = "strict",
   roomId = null,
   onRematch,
   onHome,
@@ -57,6 +59,12 @@ export function RevealPhase({
   myId,
 }: RevealPhaseProps) {
   const isShirazu = poems[0]?.mode === "shirazu";
+  const styleLabel =
+    SHIRAZU_STYLE_LABEL[
+      poems[0]?.shirazuStyle === "free" || shirazuStyle === "free"
+        ? "free"
+        : "strict"
+    ];
   const bulkCaptureRef = useRef<HTMLDivElement>(null);
   const poemCaptureRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const [shareOpen, setShareOpen] = useState(false);
@@ -175,8 +183,8 @@ export function RevealPhase({
         <h2 className="text-xl tracking-widest md:text-4xl">
           {isShirazu
             ? showGallery
-              ? `${MODE_LABEL.shirazu}・${toKanji(poems.length)}首が完成`
-              : MODE_LABEL.shirazu
+              ? `${styleLabel}・${toKanji(poems.length)}首が完成`
+              : styleLabel
             : `${MODE_LABEL[poems[0].mode]}が完成`}
         </h2>
         {theme.trim() ? (

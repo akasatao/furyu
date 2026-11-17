@@ -1,9 +1,9 @@
 "use client";
 
 import { FitText } from "@/components/FitText";
-import { MODE_LABEL, ONLINE_MIN_PLAYERS } from "@/lib/constants";
+import { ONLINE_MIN_PLAYERS, roomModeLabel } from "@/lib/constants";
 import { toKanji } from "@/lib/utils";
-import type { Player, VerseMode } from "@/types/game";
+import type { Player, ShirazuStyle, VerseMode } from "@/types/game";
 
 function nameInitial(name: string): string {
   return [...name][0] ?? "？";
@@ -12,6 +12,7 @@ function nameInitial(name: string): string {
 interface WaitingLobbyProps {
   mode: VerseMode;
   theme?: string;
+  shirazuStyle?: ShirazuStyle;
   players: Player[];
   spectators?: Player[];
   myId: string;
@@ -32,6 +33,7 @@ interface WaitingLobbyProps {
 export function WaitingLobby({
   mode,
   theme = "",
+  shirazuStyle = "strict",
   players,
   spectators = [],
   myId,
@@ -66,7 +68,8 @@ export function WaitingLobby({
           <FitText text={hostName ? `${hostName}の和室` : "和室"} minFontPx={14} />
         </h2>
         <p className="text-sm tracking-wider text-black/55">
-          {MODE_LABEL[mode]}・{toKanji(players.length)}／{toKanji(maxPlayers)}人
+          {roomModeLabel(mode, shirazuStyle)}・{toKanji(players.length)}／
+          {toKanji(maxPlayers)}人
           {watching ? "・観戦" : ""}
         </p>
         {theme.trim() ? (
