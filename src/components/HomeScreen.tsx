@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { TanzakuCard } from "@/components/TanzakuCard";
+import { ViewportFit } from "@/components/ViewportFit";
 import {
   MODE_LABEL,
   modeAllowsSolo,
@@ -299,46 +300,90 @@ export function HomeScreen({
     onJoinRoom(code);
   };
 
+  const modeGap = inputFocused
+    ? "gap-2 pb-4 md:gap-3"
+    : "gap-3 md:gap-4";
+
   return (
     <div
       ref={rootRef}
-      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-x-hidden bg-white md:max-w-2xl ${
-        inputFocused || step === "history"
-          ? "overflow-y-auto overscroll-x-none overscroll-y-contain touch-pan-y"
-          : "overflow-hidden"
-      }`}
+      className="relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-hidden overflow-x-hidden bg-white md:max-w-2xl"
     >
-      <div
-        className={`flex min-h-0 flex-1 flex-col ${
-          transitioning ? "pointer-events-none" : ""
-        } ${
-          step === "mode"
-            ? inputFocused
-              ? "justify-start gap-2 pb-4 md:gap-[clamp(0.5rem,2dvh,1.5rem)]"
-              : "justify-center gap-3 md:gap-[clamp(0.5rem,2dvh,1.5rem)]"
-            : step === "history"
-              ? "gap-3 overflow-y-auto overscroll-contain pb-4"
-              : step === "theme"
-                ? "gap-4"
-                : "gap-4"
-        }`}
-      >
+      {step === "history" ? (
+        <div
+          className={`flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-4 ${
+            transitioning ? "pointer-events-none" : ""
+          }`}
+        >
+          <section className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-1">
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => {
+                  void goToStep("mode");
+                }}
+                className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+              >
+                ← 戻る
+              </button>
+              <h2 className="text-lg tracking-[0.35em] md:text-2xl">
+                今まで詠んだ句
+              </h2>
+              <span className="w-12" aria-hidden />
+            </div>
+            <div className="flex flex-col items-center gap-8 pb-4">
+              {poemHistory.map((entry) => {
+                const poem = historyEntryToPoem(entry);
+                const title =
+                  poem.mode === "shirazu"
+                    ? (shirazuOwnerLabel(poem, myId) ?? MODE_LABEL.shirazu)
+                    : MODE_LABEL[poem.mode];
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex w-full max-w-[15rem] flex-col items-center gap-2 md:max-w-[18rem]"
+                  >
+                    <p className="text-center text-xs tracking-widest text-black/45">
+                      {formatHistoryDate(entry.savedAt)}
+                      {title ? `　${title}` : ""}
+                      {entry.theme ? `　お題：${entry.theme}` : ""}
+                    </p>
+                    <TanzakuCard
+                      poem={poem}
+                      still
+                      anonymous={poem.mode === "shirazu"}
+                      viewerId={myId}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : (
+        <ViewportFit key={step}>
+          <div
+            className={`flex w-full flex-col ${
+              transitioning ? "pointer-events-none" : ""
+            } ${step === "mode" ? modeGap : "gap-4"}`}
+          >
         {step === "mode" ? (
           <>
             <header
-              className={`shrink-0 text-center md:space-y-[clamp(0.25rem,1dvh,0.75rem)] ${
+              className={`shrink-0 text-center md:space-y-2 ${
                 inputFocused ? "space-y-1" : "space-y-1.5"
               }`}
             >
               <hr className="brush-line mx-auto w-10 md:w-14" />
               <h1
-                className={`tracking-[0.2em] md:text-[clamp(2rem,7dvh,3.75rem)] ${
+                className={`tracking-[0.2em] md:text-6xl ${
                   inputFocused ? "text-2xl" : "text-3xl"
                 }`}
               >
                 風流
                 <span
-                  className={`mt-0.5 block tracking-[0.35em] text-black/55 md:mt-1 md:text-[clamp(0.875rem,2.5dvh,1.5rem)] ${
+                  className={`mt-0.5 block tracking-[0.35em] text-black/55 md:mt-1 md:text-2xl ${
                     inputFocused ? "text-sm" : "text-base"
                   }`}
                 >
@@ -370,12 +415,12 @@ export function HomeScreen({
                   onFocus={() => handleInputFocus(false)}
                   onBlur={handleInputBlur}
                   onChange={(e) => onNicknameChange(e.target.value)}
-                  className="brush-input w-full px-4 py-2.5 text-base md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-lg"
+                  className="brush-input w-full px-4 py-2.5 text-base md:py-3.5 md:text-lg"
                 />
               </label>
             </form>
 
-            <section className="brush-box flex shrink-0 flex-col gap-2 p-3 md:gap-[clamp(0.5rem,1.5dvh,0.75rem)] md:p-[clamp(0.75rem,2dvh,1rem)]">
+            <section className="brush-box flex shrink-0 flex-col gap-2 p-3 md:gap-3 md:p-4">
               <p className="shrink-0 text-sm tracking-widest text-black/70">
                 モードを選ぶ
               </p>
@@ -391,7 +436,7 @@ export function HomeScreen({
                     onPointerCancel={releaseChoice}
                     onPointerLeave={releaseChoice}
                     aria-pressed={pressedChoice === m}
-                    className={`brush-btn-outline w-full tracking-[0.35em] md:py-[clamp(0.75rem,2.5dvh,1.25rem)] md:text-[clamp(1.125rem,3dvh,1.5rem)] ${
+                    className={`brush-btn-outline w-full tracking-[0.35em] md:py-5 md:text-2xl ${
                       inputFocused
                         ? "px-4 py-2.5 text-base"
                         : "px-4 py-3.5 text-lg"
@@ -478,8 +523,8 @@ export function HomeScreen({
             )}
           </>
         ) : step === "theme" ? (
-          <section className="relative flex min-h-0 flex-1 flex-col">
-            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-1 py-1">
+          <section className="flex w-full flex-col gap-5">
+            <div className="flex items-center justify-between gap-2 px-1">
               <button
                 type="button"
                 disabled={isLocked}
@@ -488,23 +533,21 @@ export function HomeScreen({
               >
                 ← 戻る
               </button>
-              <p className="text-xl tracking-[0.35em] text-black/55 md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
                 {MODE_LABEL[mode]}
               </p>
               <span className="w-12" aria-hidden />
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 px-1 py-4 md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
+            <div className="flex flex-col items-center gap-5 px-1 py-2 md:gap-6">
               <header className="space-y-1 text-center">
-                <h2 className="text-3xl tracking-[0.35em] md:text-[clamp(1.75rem,5dvh,3rem)]">
-                  お題
-                </h2>
+                <h2 className="text-3xl tracking-[0.35em] md:text-5xl">お題</h2>
                 <p className="text-sm tracking-widest text-black/45">
                   空欄のまま進んでも構いません
                 </p>
               </header>
 
-              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-[clamp(0.5rem,2dvh,1rem)]">
+              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
                 <input
                   ref={themeInputRef}
                   type="text"
@@ -519,13 +562,13 @@ export function HomeScreen({
                     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                     if (e.key === "Enter") handleConfirmTheme();
                   }}
-                  className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-[clamp(0.75rem,2dvh,1rem)] md:text-[clamp(1.25rem,3dvh,1.5rem)]"
+                  className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-4 md:text-2xl"
                 />
                 <button
                   type="button"
                   disabled={isLocked}
                   onClick={pickRandomTheme}
-                  className="brush-btn-outline w-full px-4 py-3 text-sm tracking-[0.35em] md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-base"
+                  className="brush-btn-outline w-full px-4 py-3 text-sm tracking-[0.35em] md:py-3.5 md:text-base"
                 >
                   ランダムなお題
                 </button>
@@ -533,63 +576,17 @@ export function HomeScreen({
                   type="button"
                   disabled={isLocked}
                   onClick={handleConfirmTheme}
-                  className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-[clamp(0.75rem,2.5dvh,1.25rem)] md:text-[clamp(1rem,2.5dvh,1.25rem)]"
+                  className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl"
                 >
                   このお題で進む
                 </button>
               </div>
             </div>
           </section>
-        ) : step === "history" ? (
-          <section className="flex min-h-0 flex-1 flex-col gap-4">
-            <div className="flex shrink-0 items-center justify-between gap-2 px-1">
-              <button
-                type="button"
-                disabled={isLocked}
-                onClick={() => {
-                  void goToStep("mode");
-                }}
-                className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
-              >
-                ← 戻る
-              </button>
-              <h2 className="text-lg tracking-[0.35em] md:text-[clamp(1.125rem,3dvh,1.5rem)]">
-                今まで詠んだ句
-              </h2>
-              <span className="w-12" aria-hidden />
-            </div>
-            <div className="flex flex-col items-center gap-8 pb-4 md:gap-[clamp(1.5rem,4dvh,2rem)]">
-              {poemHistory.map((entry) => {
-                const poem = historyEntryToPoem(entry);
-                const title =
-                  poem.mode === "shirazu"
-                    ? (shirazuOwnerLabel(poem, myId) ?? MODE_LABEL.shirazu)
-                    : MODE_LABEL[poem.mode];
-                return (
-                  <div
-                    key={entry.id}
-                    className="flex w-full max-w-[15rem] flex-col items-center gap-2 md:max-w-[min(18rem,38dvh)]"
-                  >
-                    <p className="text-center text-xs tracking-widest text-black/45">
-                      {formatHistoryDate(entry.savedAt)}
-                      {title ? `　${title}` : ""}
-                      {entry.theme ? `　お題：${entry.theme}` : ""}
-                    </p>
-                    <TanzakuCard
-                      poem={poem}
-                      still
-                      anonymous={poem.mode === "shirazu"}
-                      viewerId={myId}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </section>
         ) : (
-          /* 一人／複数の確認画面（俳句・短歌）— 本体は画面中央 */
-          <section className="relative flex min-h-0 flex-1 flex-col">
-            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-1 py-1">
+          /* 一人／複数の確認画面（俳句・短歌） */
+          <section className="flex w-full flex-col gap-5">
+            <div className="flex items-center justify-between gap-2 px-1">
               <button
                 type="button"
                 disabled={isLocked}
@@ -600,17 +597,17 @@ export function HomeScreen({
               >
                 ← 戻る
               </button>
-              <p className="text-xl tracking-[0.35em] text-black/55 md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
                 {MODE_LABEL[mode]}
               </p>
               <span className="w-12" aria-hidden />
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-1 py-4 md:gap-[clamp(1rem,3dvh,2rem)]">
-              <h2 className="text-center text-3xl tracking-[0.35em] md:text-[clamp(1.75rem,5dvh,3rem)]">
+            <div className="flex flex-col items-center gap-8 px-1 py-2 md:gap-8">
+              <h2 className="text-center text-3xl tracking-[0.35em] md:text-5xl">
                 どう詠む？
               </h2>
-              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-[clamp(0.5rem,2dvh,1rem)]">
+              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
                 <button
                   type="button"
                   disabled={isLocked}
@@ -620,7 +617,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "solo"}
-                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-[clamp(1rem,4dvh,1.75rem)] md:text-[clamp(1.5rem,4.5dvh,2.25rem)] ${
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-7 md:text-4xl ${
                     pressedChoice === "solo" ? "is-pressed" : ""
                   }`}
                 >
@@ -635,7 +632,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "multi"}
-                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-[clamp(1rem,4dvh,1.75rem)] md:text-[clamp(1.5rem,4.5dvh,2.25rem)] ${
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-7 md:text-4xl ${
                     pressedChoice === "multi" ? "is-pressed" : ""
                   }`}
                 >
@@ -645,7 +642,9 @@ export function HomeScreen({
             </div>
           </section>
         )}
-      </div>
+          </div>
+        </ViewportFit>
+      )}
 
       <div
         aria-hidden

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { BgmPlayer } from "@/components/BgmPlayer";
+import { ViewportFit } from "@/components/ViewportFit";
 import { HomeScreen, type HomeStep } from "@/components/HomeScreen";
 import { RevealPhase } from "@/components/RevealPhase";
 import { ShirazuWritingPhase } from "@/components/ShirazuWritingPhase";
@@ -837,7 +838,7 @@ export function GameApp() {
       >
         {APP_VERSION}
       </p>
-      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:max-w-5xl md:px-8 md:py-[clamp(0.75rem,3dvh,3rem)]">
+      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-2 md:max-w-5xl md:px-8 md:py-3">
         {phase === "home" && (
           <HomeScreen
             key={homeStep}
@@ -863,102 +864,110 @@ export function GameApp() {
         )}
 
         {phase === "lobby" && (
-          <WaitingLobby
-            roomCode={roomCode}
-            mode={mode}
-            theme={theme}
-            players={players}
-            myId={myId}
-            maxPlayers={playerCount}
-            isHost={Boolean(me?.isHost)}
-            busy={busy}
-            onStart={() => {
-              void handleStartGame();
-            }}
-            onBack={() => {
-              void handleLobbyBack();
-            }}
-            onLeave={() => {
-              void handleLeave();
-            }}
-          />
+          <ViewportFit>
+            <WaitingLobby
+              roomCode={roomCode}
+              mode={mode}
+              theme={theme}
+              players={players}
+              myId={myId}
+              maxPlayers={playerCount}
+              isHost={Boolean(me?.isHost)}
+              busy={busy}
+              onStart={() => {
+                void handleStartGame();
+              }}
+              onBack={() => {
+                void handleLobbyBack();
+              }}
+              onLeave={() => {
+                void handleLeave();
+              }}
+            />
+          </ViewportFit>
         )}
 
         {phase === "writing" &&
           isShirazuTurn(turn) &&
           handPoem && (
-            <ShirazuWritingPhase
-              poem={handPoem}
-              roundIndex={turn.roundIndex}
-              draft={localDraft}
-              playerCount={sessionSize}
-              submittedCount={turn.submittedIds.length}
-              hasSubmitted={turn.submittedIds.includes(myId)}
-              myId={myId}
-              theme={theme}
-              busy={busy}
-              onDraftChange={handleDraftChange}
-              onSubmit={() => {
-                void handleSubmit();
-              }}
-            />
+            <ViewportFit>
+              <ShirazuWritingPhase
+                poem={handPoem}
+                roundIndex={turn.roundIndex}
+                draft={localDraft}
+                playerCount={sessionSize}
+                submittedCount={turn.submittedIds.length}
+                hasSubmitted={turn.submittedIds.includes(myId)}
+                myId={myId}
+                theme={theme}
+                busy={busy}
+                onDraftChange={handleDraftChange}
+                onSubmit={() => {
+                  void handleSubmit();
+                }}
+              />
+            </ViewportFit>
           )}
 
         {phase === "writing" &&
           isLineTurn(turn) &&
           writer &&
           activePoem && (
-            <WritingPhase
-              mode={activePoem.mode}
-              stepIndex={turn.stepIndex}
-              draft={draftForUi}
-              promptLines={promptLines}
-              progressLabel={null}
-              playerCount={sessionSize}
-              writer={writer}
-              myId={myId}
-              theme={theme}
-              waitingForPartner={writer.id !== myId}
-              isSolo={players.length === 1 && !roomId}
-              busy={busy}
-              onDraftChange={handleDraftChange}
-              onSubmit={() => {
-                void handleSubmit();
-              }}
-              onBack={
-                players.length === 1 && !roomId
-                  ? () => {
-                      void handleLobbyBack();
-                    }
-                  : undefined
-              }
-            />
+            <ViewportFit>
+              <WritingPhase
+                mode={activePoem.mode}
+                stepIndex={turn.stepIndex}
+                draft={draftForUi}
+                promptLines={promptLines}
+                progressLabel={null}
+                playerCount={sessionSize}
+                writer={writer}
+                myId={myId}
+                theme={theme}
+                waitingForPartner={writer.id !== myId}
+                isSolo={players.length === 1 && !roomId}
+                busy={busy}
+                onDraftChange={handleDraftChange}
+                onSubmit={() => {
+                  void handleSubmit();
+                }}
+                onBack={
+                  players.length === 1 && !roomId
+                    ? () => {
+                        void handleLobbyBack();
+                      }
+                    : undefined
+                }
+              />
+            </ViewportFit>
           )}
 
         {phase === "reveal" && poems.length > 0 && (
-          <RevealPhase
-            poems={poems}
-            theme={theme}
-            revealReady={revealReady}
-            revealPoemIndex={
-              isShirazuRevealTurn(turn) ? turn.poemIndex : null
-            }
-            isHost={Boolean(me?.isHost)}
-            myId={myId}
-            advancing={busy}
-            onAdvanceReveal={() => {
-              void handleAdvanceReveal();
-            }}
-            canRematch={Boolean(me?.isHost) || (!roomId && players.length === 1)}
-            hostPresent={players.some((p) => p.isHost)}
-            isSolo={players.length === 1}
-            onRematch={() => {
-              void handleRematch();
-            }}
-            onHome={() => {
-              void handleLeave();
-            }}
-          />
+          <ViewportFit minScale={0.72}>
+            <RevealPhase
+              poems={poems}
+              theme={theme}
+              revealReady={revealReady}
+              revealPoemIndex={
+                isShirazuRevealTurn(turn) ? turn.poemIndex : null
+              }
+              isHost={Boolean(me?.isHost)}
+              myId={myId}
+              advancing={busy}
+              onAdvanceReveal={() => {
+                void handleAdvanceReveal();
+              }}
+              canRematch={Boolean(me?.isHost) || (!roomId && players.length === 1)}
+              hostPresent={players.some((p) => p.isHost)}
+              isSolo={players.length === 1}
+              onRematch={() => {
+                void handleRematch();
+              }}
+              onHome={() => {
+                void handleLeave();
+              }}
+            />
+          </ViewportFit>
         )}
       </main>
 

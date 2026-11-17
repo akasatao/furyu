@@ -138,10 +138,10 @@ export function RevealPhase({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col items-center gap-3 md:max-w-3xl md:gap-[clamp(0.75rem,2.5dvh,2rem)]">
-      <header className="shrink-0 space-y-1.5 text-center">
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 md:max-w-3xl md:gap-8">
+      <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
         <p className="text-xs tracking-[0.35em] text-black/50">披露</p>
-        <h2 className="text-xl tracking-widest md:text-[clamp(1.25rem,4dvh,2.25rem)]">
+        <h2 className="text-xl tracking-widest md:text-4xl">
           {isShirazu
             ? showGallery
               ? `${MODE_LABEL.shirazu}・${toKanji(poems.length)}首が完成`

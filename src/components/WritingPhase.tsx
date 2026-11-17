@@ -94,7 +94,7 @@ export function WritingPhase({
 
   if (isSolo) {
     return (
-      <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
+      <div className="mx-auto flex w-full max-w-lg flex-col gap-3 md:max-w-2xl md:gap-6">
         {onBack && (
           <div className="flex shrink-0 items-center justify-between gap-2 px-1">
             <button
@@ -222,12 +222,12 @@ export function WritingPhase({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
-      <header className="shrink-0 space-y-0.5 text-center">
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-3 md:max-w-2xl md:gap-6">
+      <header className="shrink-0 space-y-0.5 text-center md:space-y-1">
         <p className="text-[10px] tracking-[0.35em] text-black/55 md:text-xs">
           {MODE_LABEL[mode]}　{toKanji(stepIndex + 1)}／{toKanji(total)}
         </p>
-        <h2 className="text-xl tracking-widest md:text-[clamp(1.25rem,4dvh,2.25rem)]">
+        <h2 className="text-xl tracking-widest md:text-4xl">
           {isShirazu ? "一音を詠む" : label}
         </h2>
         {progressLabel && (

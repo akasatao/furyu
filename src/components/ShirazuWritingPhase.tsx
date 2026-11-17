@@ -157,10 +157,10 @@ export function ShirazuWritingPhase({
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col md:max-w-2xl ${
+      className={`mx-auto flex w-full max-w-lg flex-col md:max-w-2xl ${
         compact || hasSubmitted
-          ? "gap-2 overflow-hidden md:gap-[clamp(0.5rem,2dvh,1.25rem)]"
-          : "gap-3 overflow-x-hidden md:gap-[clamp(0.5rem,2dvh,1.25rem)]"
+          ? "gap-2 overflow-hidden md:gap-5"
+          : "gap-3 overflow-x-hidden md:gap-5"
       }`}
     >
       <header
