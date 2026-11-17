@@ -61,7 +61,7 @@ export function KickMenu({
                       type="button"
                       disabled={busy}
                       onClick={() => {
-                        if (window.confirm(`${p.name}さんを破門といたしますか？`)) {
+                        if (window.confirm(`${p.name}さんを破門にしますか？`)) {
                           onKick(p.id);
                           setOpen(false);
                         }

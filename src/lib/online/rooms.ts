@@ -292,6 +292,8 @@ async function deletePlayerRow(roomId: string, playerId: string) {
     .eq("room_id", roomId)
     .eq("player_id", playerId);
   if (error) throw error;
+  // 絞り込み付きの購読には DELETE が届かないため、読み直しを明示的に知らせる
+  await postRoomBroadcast(roomId, SYNC_EVENT, {});
 }
 
 /** 抜ける人の残りの句を、残る連衆に座席順で振り直す（俳句・短歌） */
@@ -696,6 +698,37 @@ export type RoomSubscription = {
 };
 
 const LEAVE_EVENT = "leave";
+const SYNC_EVENT = "sync";
+
+/** Realtime の broadcast を REST で送る（購読していなくても送れる） */
+async function postRoomBroadcast(
+  roomId: string,
+  event: string,
+  payload: Record<string, unknown>,
+  keepalive = false,
+): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return;
+  try {
+    await fetch(`${url}/realtime/v1/api/broadcast`, {
+      method: "POST",
+      keepalive,
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: [
+          { topic: `room-${roomId}`, event, payload, private: false },
+        ],
+      }),
+    });
+  } catch {
+    // 知らせが届かなくても、次の更新で読み直される
+  }
+}
 
 export function subscribeOnlineRoom(
   roomId: string,
@@ -721,6 +754,9 @@ export function subscribeOnlineRoom(
       const playerId = (payload as { playerId?: unknown } | undefined)
         ?.playerId;
       if (alive && typeof playerId === "string") onLeaveSignal?.(playerId);
+    })
+    .on("broadcast", { event: SYNC_EVENT }, () => {
+      void refresh();
     })
     .on(
       "postgres_changes",
@@ -758,28 +794,7 @@ export function subscribeOnlineRoom(
  * Realtime の WebSocket は pagehide で先に切断されるため、keepalive の REST で送る。
  */
 export function sendLeaveOnUnload(roomId: string, playerId: string): void {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return;
-  void fetch(`${url}/realtime/v1/api/broadcast`, {
-    method: "POST",
-    keepalive: true,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages: [
-        {
-          topic: `room-${roomId}`,
-          event: LEAVE_EVENT,
-          payload: { playerId },
-          private: false,
-        },
-      ],
-    }),
-  }).catch(() => {});
+  void postRoomBroadcast(roomId, LEAVE_EVENT, { playerId }, true);
 }
 
 /** 早く入った順（亭主の引き継ぎ順） */

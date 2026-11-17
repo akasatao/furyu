@@ -536,6 +536,7 @@ export function GameApp() {
             }
           }
           flushSync(() => {
+            setBanished(false);
             setHomeStep(nextHomeStep);
             setPhase("home");
             setRoomId(null);
@@ -573,7 +574,6 @@ export function GameApp() {
       void (async () => {
         await sleep(BANISH_HOLD_MS);
         await leaveRoomAndGoHome(lobbyBackStepRef.current, { skipLeave: true });
-        setBanished(false);
         ejectLockRef.current = false;
       })();
     };
@@ -1103,12 +1103,21 @@ export function GameApp() {
         }}
       />
 
+      {/* 白フェード（z-50）より下に置き、画面ごと白へ溶けて戻る */}
       {banished && (
         <div
           role="alert"
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-white"
+          className="pointer-events-none fixed inset-0 z-[45] flex items-center justify-center"
         >
-          <p className="text-8xl tracking-[0.3em] md:text-[12rem]">破門</p>
+          <p
+            className="text-8xl tracking-[0.3em] md:text-[12rem]"
+            style={{
+              textShadow:
+                "0 0 12px #fff, 0 0 24px #fff, 0 0 4px #fff, 0 0 2px #fff",
+            }}
+          >
+            破門
+          </p>
         </div>
       )}
     </div>
