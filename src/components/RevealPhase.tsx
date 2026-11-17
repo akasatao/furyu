@@ -16,6 +16,20 @@ import type { Poem, ShirazuStyle } from "@/types/game";
 /** タイトル＋空短冊を出してから書き始めるまでの間 */
 const BEFORE_WRITE_MS = 600;
 
+function PlayIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M8 5.5v13l11-6.5L8 5.5z" />
+    </svg>
+  );
+}
+
 interface RevealPhaseProps {
   poems: Poem[];
   theme?: string;
@@ -74,6 +88,16 @@ export function RevealPhase({
   const [sharingPoemId, setSharingPoemId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [presentWriting, setPresentWriting] = useState(false);
+  /**
+   * この首の表示に入った時点で既読だったか。
+   * 書き出し開始と同時に mark しても、初回のアニメは skip しない。
+   */
+  const [presentSkipAnim, setPresentSkipAnim] = useState(false);
+  /** 俳句・短歌：表示開始時点で既読だったか */
+  const [lineSkipAnim, setLineSkipAnim] = useState(false);
+  /** 一覧で披露アニメを再生中の句 */
+  const [replayingId, setReplayingId] = useState<string | null>(null);
+  const [replayNonce, setReplayNonce] = useState(0);
 
   const poemCount = poems.length;
   /** ソロ披露など roomId が無いときの既読キー */
@@ -102,18 +126,17 @@ export function RevealPhase({
     (revealReady ||
       (revealPoemIndex != null && revealPoemIndex >= poemCount));
   const showActions = !isShirazu || showGallery;
-  const presentAlreadySeen =
-    presentIndex != null &&
-    hasShirazuRevealStepSeen(progressId, presentIndex);
-  const lineAlreadySeen = hasLineRevealSeen(progressId);
 
   useEffect(() => {
     if (presentIndex == null) {
       setPresentWriting(false);
+      setPresentSkipAnim(false);
       return;
     }
-    // ノートPC再開などでも、一度見た首は書き出し演出をやり直さない
-    if (hasShirazuRevealStepSeen(progressId, presentIndex)) {
+    // 入室時点の既読だけアニメ省略。mark 後に still へ切り替わらないようにする
+    const already = hasShirazuRevealStepSeen(progressId, presentIndex);
+    setPresentSkipAnim(already);
+    if (already) {
       setPresentWriting(true);
       return;
     }
@@ -126,10 +149,12 @@ export function RevealPhase({
   }, [presentIndex, progressId]);
 
   useEffect(() => {
-    if (isShirazu || !revealReady || lineAlreadySeen) return;
+    if (isShirazu) return;
+    const already = hasLineRevealSeen(progressId);
+    setLineSkipAnim(already);
+    if (already || !revealReady) return;
     markLineRevealSeen(progressId);
-  }, [isShirazu, revealReady, lineAlreadySeen, progressId]);
-
+  }, [isShirazu, revealReady, progressId]);
   const openSharePreview = useCallback(
     async (element: HTMLElement | null, filename: string) => {
       if (!element || busy) return;
@@ -175,6 +200,11 @@ export function RevealPhase({
   const handleCloseShare = () => {
     setShareOpen(false);
   };
+
+  const handleReplayPoem = useCallback((poemId: string) => {
+    setReplayingId(poemId);
+    setReplayNonce((n) => n + 1);
+  }, []);
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 md:max-w-3xl md:gap-8">
@@ -232,8 +262,8 @@ export function RevealPhase({
                   key={`present-${presentPoem.id}-${presentIndex}`}
                   poem={presentPoem}
                   anonymous
-                  still={presentAlreadySeen}
-                  writing={presentAlreadySeen || presentWriting}
+                  still={presentSkipAnim}
+                  writing={presentSkipAnim || presentWriting}
                   viewerId={myId}
                 />
               </div>
@@ -262,31 +292,52 @@ export function RevealPhase({
 
           {showGallery && (
             <div className="flex w-full flex-col items-center gap-6 md:gap-[clamp(1.5rem,4dvh,2.5rem)]">
-              {poems.map((poem) => (
-                <div
-                  key={poem.id}
-                  className="flex w-full max-w-[15rem] shrink-0 flex-col items-center gap-2 md:max-w-[min(22rem,42dvh)]"
-                >
-                  <TanzakuCard
-                    poem={poem}
-                    anonymous
-                    still
-                    viewerId={myId}
-                  />
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      void handleOpenPoemShare(poem);
-                    }}
-                    className="brush-btn-outline w-full px-4 py-2.5 text-xs tracking-widest text-black/55"
+              {poems.map((poem) => {
+                const replaying = replayingId === poem.id;
+                return (
+                  <div
+                    key={poem.id}
+                    className="flex w-full max-w-[15rem] shrink-0 flex-col items-center gap-2 md:max-w-[min(22rem,42dvh)]"
                   >
-                    {busy && sharingPoemId === poem.id
-                      ? "画像を用意中…"
-                      : "句をシェアする"}
-                  </button>
-                </div>
-              ))}
+                    <TanzakuCard
+                      key={
+                        replaying
+                          ? `replay-${poem.id}-${replayNonce}`
+                          : `gallery-${poem.id}`
+                      }
+                      poem={poem}
+                      anonymous
+                      still={!replaying}
+                      writing
+                      viewerId={myId}
+                    />
+                    <div className="flex w-full items-stretch gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          void handleOpenPoemShare(poem);
+                        }}
+                        className="brush-btn-outline min-w-0 flex-1 px-3 py-2.5 text-xs tracking-widest text-black/55"
+                      >
+                        {busy && sharingPoemId === poem.id
+                          ? "画像を用意中…"
+                          : "句をシェアする"}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="披露を再生"
+                        onClick={() => {
+                          handleReplayPoem(poem.id);
+                        }}
+                        className="brush-btn-outline flex shrink-0 items-center justify-center px-3 text-black/55"
+                      >
+                        <PlayIcon />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -306,8 +357,8 @@ export function RevealPhase({
             >
               <TanzakuCard
                 poem={poem}
-                still={lineAlreadySeen}
-                writing={lineAlreadySeen || revealReady}
+                still={lineSkipAnim}
+                writing={lineSkipAnim || revealReady}
               />
             </div>
           ))}

@@ -8,10 +8,15 @@ import { freePoemTranscript } from "@/lib/shirazu";
 import { shirazuOwnerLabel } from "@/lib/utils";
 import type { Poem } from "@/types/game";
 
-/** 一文字あたりの表示時間（全句で同じ速度） */
+/** 一文字あたりの表示時間（しっかり・俳句・短歌） */
 const MS_PER_CHAR = 160;
 /** 句が出し終わってから次の句までの待ち */
 const GAP_MS = 500;
+/** 自由律：1枠を1文字とみなし、俳句・短歌と同じ速さと間で書き下ろす */
+const FREE_MS_PER_SLOT = MS_PER_CHAR;
+const FREE_GAP_MS = GAP_MS;
+
+const FREE_SLOT_TARGETS = PART_TARGETS.shirazu;
 
 interface TanzakuCardProps {
   poem: Poem;
@@ -39,18 +44,28 @@ export function TanzakuCard({
   const showAnonymous = (anonymous || isShirazu) && !ownerLabel;
   /** キャプチャ時は常に全文。それ以外は writing が立つまで実字を出さない */
   const showText = still || writing;
-  /** リレーの空枠は〇で音数を示す */
-  const showShirazuSlots = isShirazu && !showText;
+  /**
+   * しっかり披露の待ち：〇で枠だけ見せる。
+   * 自由律は〇が一瞬出ると目立つので、書き出しまで空白のままにする。
+   */
+  const showShirazuSlots = isShirazu && !free && !showText;
   const [peekOpen, setPeekOpen] = useState(false);
   const canPeekPoem = free && showText;
   const transcript = canPeekPoem ? freePoemTranscript(poem) : "";
+  /** 自由律披露：枠ごとに delay を付けて順に出す */
+  const animateFreeSlots = free && showText && !still;
 
   let delayMs = 0;
-  const lineTimings = poem.lines.map((line) => {
-    const chars = Math.max(1, [...(line?.text ?? "")].length);
-    const durationMs = chars * MS_PER_CHAR;
+  const lineTimings = poem.lines.map((line, i) => {
+    // 自由律は1枠＝1文字として、五・七・五の枠数で速度を揃える
+    const chars = free
+      ? (FREE_SLOT_TARGETS[i] ?? 5)
+      : Math.max(1, [...(line?.text ?? "")].length);
+    const step = free ? FREE_MS_PER_SLOT : MS_PER_CHAR;
+    const gap = free ? FREE_GAP_MS : GAP_MS;
+    const durationMs = chars * step;
     const timing = { delayMs, durationMs };
-    delayMs += durationMs + GAP_MS;
+    delayMs += durationMs + gap;
     return timing;
   });
 
@@ -109,7 +124,7 @@ export function TanzakuCard({
         <div className="flex min-h-[220px] items-center justify-center py-3 md:min-h-[clamp(220px,42dvh,340px)] md:py-[clamp(0.75rem,2dvh,1.25rem)]">
           {showText ? (
             <div
-              key="writing"
+              key={animateFreeSlots ? "free-writing" : "writing"}
               className={
                 free
                   ? "pointer-events-none text-[1.35rem] leading-none tracking-normal [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
@@ -131,17 +146,18 @@ export function TanzakuCard({
                       ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
                       : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
                 const target = PART_TARGETS.shirazu[i] ?? 5;
+                const animateLine = !still && !free;
                 return (
                   <span
                     key={i}
-                    className={`${still ? "" : "tanzaku-line "}${offset} block`.trim()}
+                    className={`${animateLine ? "tanzaku-line " : ""}${offset} block`.trim()}
                     style={
-                      still
-                        ? undefined
-                        : {
+                      animateLine
+                        ? {
                             animationDelay: `${lineTimings[i].delayMs}ms`,
                             animationDuration: `${lineTimings[i].durationMs}ms`,
                           }
+                        : undefined
                     }
                   >
                     {isShirazu ? (
@@ -151,6 +167,14 @@ export function TanzakuCard({
                         free={free}
                         dimEmpty={false}
                         slotPeek={false}
+                        writeDelayMs={
+                          animateFreeSlots
+                            ? lineTimings[i].delayMs
+                            : undefined
+                        }
+                        writeMsPerSlot={
+                          animateFreeSlots ? FREE_MS_PER_SLOT : undefined
+                        }
                       />
                     ) : (
                       (line?.text ?? "？")
@@ -222,10 +246,15 @@ export function TanzakuCard({
 
 /** 短冊の書き出し完了までの目安ms */
 export function estimateTanzakuWriteMs(poem: Poem): number {
+  const free = poem.mode === "shirazu" && poem.shirazuStyle === "free";
   let delayMs = 0;
-  for (const line of poem.lines) {
-    const chars = Math.max(1, [...(line?.text ?? "")].length);
-    delayMs += chars * MS_PER_CHAR + GAP_MS;
-  }
+  poem.lines.forEach((line, i) => {
+    const chars = free
+      ? (PART_TARGETS.shirazu[i] ?? 5)
+      : Math.max(1, [...(line?.text ?? "")].length);
+    const step = free ? FREE_MS_PER_SLOT : MS_PER_CHAR;
+    const gap = free ? FREE_GAP_MS : GAP_MS;
+    delayMs += chars * step + gap;
+  });
   return delayMs;
 }

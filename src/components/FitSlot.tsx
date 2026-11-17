@@ -12,7 +12,9 @@ interface FitSlotProps {
 }
 
 /**
- * 1枠に文字列を左斜め上→右斜め下へ並べ、入りきらなければ font-size を下げる。
+ * 1枠に文字列を収める。
+ * - 1文字: 中央
+ * - 2文字以上: 左斜め上→右斜め下、入りきらなければ font-size を下げる
  * 親は横書きの正方形セルを想定。
  */
 export function FitSlot({
@@ -35,6 +37,17 @@ export function FitSlot({
 
       const n = Math.max(chars.length, 1);
       const cell = Math.min(width, height);
+
+      if (n === 2 || n === 3) {
+        // 斜め2〜3文字。少し小さめにして窮屈さを避ける
+        const inset = 0.18;
+        const usable = cell * Math.SQRT2 * (1 - inset * 2);
+        const spaced = usable / ((n - 1) * 1.08);
+        const size = Math.max(minFontPx, Math.min(cell * 0.36, spaced));
+        el.style.fontSize = `${size}px`;
+        return;
+      }
+
       const inset = n === 1 ? 0.5 : 0.12;
       const usable = cell * Math.SQRT2 * (n === 1 ? 1 : 1 - inset * 2);
       // 文字同士が軽く触れ合う程度まで大きく取る
@@ -64,7 +77,12 @@ export function FitSlot({
   }
 
   const last = Math.max(chars.length - 1, 1);
-  const inset = chars.length === 1 ? 0.5 : 0.12;
+  const inset =
+    chars.length === 1
+      ? 0.5
+      : chars.length === 2 || chars.length === 3
+        ? 0.18
+        : 0.12;
 
   return (
     <span
