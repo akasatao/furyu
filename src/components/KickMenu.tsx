@@ -8,10 +8,18 @@ interface KickMenuProps {
   myId: string;
   busy?: boolean;
   onKick: (playerId: string) => void;
+  /** 亭主が和室を閉じる（全員が元の画面へ戻る） */
+  onCloseRoom: () => void;
 }
 
-/** 執筆中、亭主だけが開ける連衆一覧（退出させる） */
-export function KickMenu({ players, myId, busy = false, onKick }: KickMenuProps) {
+/** 執筆中、亭主だけが開ける連衆一覧（破門する） */
+export function KickMenu({
+  players,
+  myId,
+  busy = false,
+  onKick,
+  onCloseRoom,
+}: KickMenuProps) {
   const [open, setOpen] = useState(false);
   const others = players.filter((p) => p.id !== myId);
 
@@ -53,14 +61,14 @@ export function KickMenu({ players, myId, busy = false, onKick }: KickMenuProps)
                       type="button"
                       disabled={busy}
                       onClick={() => {
-                        if (window.confirm(`${p.name}さんを退出させますか？`)) {
+                        if (window.confirm(`${p.name}さんを破門といたしますか？`)) {
                           onKick(p.id);
                           setOpen(false);
                         }
                       }}
                       className="shrink-0 border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
                     >
-                      退出させる
+                      破門
                     </button>
                   </li>
                 ))}
@@ -68,8 +76,21 @@ export function KickMenu({ players, myId, busy = false, onKick }: KickMenuProps)
             )}
             <button
               type="button"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm("和室を閉じますか？ 全員が退出します。")) {
+                  setOpen(false);
+                  onCloseRoom();
+                }
+              }}
+              className="brush-btn mt-4 w-full px-4 py-2.5 text-sm tracking-[0.3em]"
+            >
+              和室を閉じる
+            </button>
+            <button
+              type="button"
               onClick={() => setOpen(false)}
-              className="mt-4 w-full text-sm tracking-widest text-black/50 underline-offset-4 hover:underline"
+              className="mt-3 w-full text-sm tracking-widest text-black/50 underline-offset-4 hover:underline"
             >
               閉じる
             </button>

@@ -13,7 +13,7 @@ interface WaitingLobbyProps {
   isHost: boolean;
   busy?: boolean;
   onStart: () => void;
-  /** 亭主が連衆を退出させる */
+  /** 亭主が連衆を破門する */
   onKick?: (playerId: string) => void;
   /** ひとつ前の画面へ（部屋は退出） */
   onBack: () => void;
@@ -94,13 +94,13 @@ export function WaitingLobby({
                   type="button"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(`${p.name}さんを退出させますか？`)) {
+                    if (window.confirm(`${p.name}さんを破門といたしますか？`)) {
                       onKick(p.id);
                     }
                   }}
                   className="shrink-0 border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
                 >
-                  退出
+                  破門
                 </button>
               ) : null}
             </li>

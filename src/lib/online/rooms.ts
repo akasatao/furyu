@@ -270,17 +270,15 @@ export async function leaveOnlineRoom(options: {
     // 部屋が既に無い場合はそのまま退出扱い
   }
 
-  if (phase === "writing") {
+  if (phase === "writing" && !options.isHost) {
     await removePlayerMidGame(options.roomId, options.playerId);
   } else {
     await deletePlayerRow(options.roomId, options.playerId);
   }
 
-  // 披露・執筆中に他連衆が残る場合は部屋を残す（結果閲覧のため）
+  // 披露中に他連衆が残る場合は部屋を残す（結果閲覧のため）。執筆中は閉じる
   const keepForGuests =
-    options.isHost &&
-    remainingGuests > 0 &&
-    (phase === "reveal" || phase === "writing");
+    options.isHost && remainingGuests > 0 && phase === "reveal";
   if (options.isHost && !keepForGuests) {
     await supabase.from("rooms").delete().eq("id", options.roomId);
   }
@@ -408,10 +406,10 @@ export async function kickOnlinePlayer(options: {
 }): Promise<OnlineRoomSnapshot> {
   const snapshot = await loadRoomSnapshot(options.roomId);
   if (snapshot.room.host_id !== options.hostId) {
-    throw new Error("亭主だけが退出させられます。");
+    throw new Error("亭主だけが破門できます。");
   }
   if (options.targetId === options.hostId) {
-    throw new Error("亭主は自分を退出させられません。");
+    throw new Error("亭主は自分を破門できません。");
   }
   if (!snapshot.players.some((p) => p.id === options.targetId)) {
     return snapshot;
@@ -422,7 +420,7 @@ export async function kickOnlinePlayer(options: {
   } else if (snapshot.room.phase === "writing") {
     await removePlayerMidGame(options.roomId, options.targetId);
   } else {
-    throw new Error("披露中は退出させられません。");
+    throw new Error("披露中は破門できません。");
   }
 
   return loadRoomSnapshot(options.roomId);
@@ -695,12 +693,17 @@ export async function resetRoomToLobby(options: {
 
 export type RoomSubscription = {
   unsubscribe: () => void;
+  /** リロード・タブを閉じる直前に、抜けることを他の連衆へ知らせる */
+  sendLeave?: (playerId: string) => void;
 };
+
+const LEAVE_EVENT = "leave";
 
 export function subscribeOnlineRoom(
   roomId: string,
   onChange: (snapshot: OnlineRoomSnapshot) => void,
   onError?: (error: Error) => void,
+  onLeaveSignal?: (playerId: string) => void,
 ): RoomSubscription {
   const supabase = getSupabase();
   let alive = true;
@@ -716,6 +719,11 @@ export function subscribeOnlineRoom(
 
   const channel = supabase
     .channel(`room-${roomId}`)
+    .on("broadcast", { event: LEAVE_EVENT }, ({ payload }) => {
+      const playerId = (payload as { playerId?: unknown } | undefined)
+        ?.playerId;
+      if (alive && typeof playerId === "string") onLeaveSignal?.(playerId);
+    })
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "rooms", filter: `id=eq.${roomId}` },
@@ -744,5 +752,85 @@ export function subscribeOnlineRoom(
       alive = false;
       void supabase.removeChannel(channel);
     },
+    sendLeave: (playerId: string) => {
+      void channel.send({
+        type: "broadcast",
+        event: LEAVE_EVENT,
+        payload: { playerId },
+      });
+    },
   };
+}
+
+/** 早く入った順（亭主の引き継ぎ順） */
+function byJoinOrder(a: Player, b: Player): number {
+  return (a.joinedAt ?? "").localeCompare(b.joinedAt ?? "");
+}
+
+/** 引き継ぎと後片付けを担当する連衆（亭主が抜けるなら次の亭主、それ以外は亭主） */
+export function leaveProcessorId(
+  players: Player[],
+  leaverId: string,
+): string | null {
+  const leaver = players.find((p) => p.id === leaverId);
+  if (!leaver) return null;
+  const others = players.filter((p) => p.id !== leaverId);
+  if (leaver.isHost) return [...others].sort(byJoinOrder)[0]?.id ?? null;
+  return others.find((p) => p.isHost)?.id ?? null;
+}
+
+/**
+ * リロード・タブを閉じて抜けた連衆の後片付け。
+ * 亭主だった場合は、早く入った順で次の連衆を亭主にしてから行を消す。
+ */
+export async function handOverAndRemove(options: {
+  roomId: string;
+  leaverId: string;
+}): Promise<void> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  const leaver = snapshot.players.find((p) => p.id === options.leaverId);
+  if (!leaver) return;
+  const others = snapshot.players
+    .filter((p) => p.id !== options.leaverId)
+    .sort(byJoinOrder);
+
+  const supabase = getSupabase();
+  if (others.length === 0) {
+    await supabase.from("rooms").delete().eq("id", options.roomId);
+    return;
+  }
+
+  if (leaver.isHost) {
+    const nextHost = others[0];
+    // 亭主不在の瞬間を作らないよう、先に新しい亭主を立てる
+    const { error: playerError } = await supabase
+      .from("room_players")
+      .update({ is_host: true })
+      .eq("room_id", options.roomId)
+      .eq("player_id", nextHost.id);
+    if (playerError) throw playerError;
+    const { error: roomError } = await supabase
+      .from("rooms")
+      .update({ host_id: nextHost.id })
+      .eq("id", options.roomId);
+    if (roomError) throw roomError;
+  }
+
+  if (snapshot.room.phase === "writing") {
+    await removePlayerMidGame(options.roomId, options.leaverId);
+  } else {
+    await deletePlayerRow(options.roomId, options.leaverId);
+  }
+}
+
+/** ページを閉じる途中でも届くよう keepalive で部屋を消す（最後の一人用） */
+export function deleteRoomOnUnload(roomId: string): void {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return;
+  void fetch(`${url}/rest/v1/rooms?id=eq.${encodeURIComponent(roomId)}`, {
+    method: "DELETE",
+    keepalive: true,
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  }).catch(() => {});
 }

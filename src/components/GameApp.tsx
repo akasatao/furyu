@@ -22,9 +22,12 @@ import {
 import {
   advanceShirazuReveal,
   createOnlineRoom,
+  deleteRoomOnUnload,
+  handOverAndRemove,
   joinOnlineRoom,
   kickOnlinePlayer,
   leaveOnlineRoom,
+  leaveProcessorId,
   resetRoomToLobby,
   startOnlineGame,
   submitOnlineTurn,
@@ -72,7 +75,8 @@ const PHASE_HOLD_MS = 280;
 /** ホーム↔ロビー／ソロ開始など（従来の速さ） */
 const NAV_FADE_MS = 420;
 const NAV_HOLD_MS = 120;
-
+/** 破門の文字を見せておく時間 */
+const BANISH_HOLD_MS = 2200;
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -118,15 +122,20 @@ export function GameApp() {
   const lobbyBackStepRef = useRef<HomeStep>("mode");
   const phaseRef = useRef(phase);
   const myIdRef = useRef(myId);
+  const playersRef = useRef(players);
   useEffect(() => {
     phaseRef.current = phase;
     myIdRef.current = myId;
-  }, [phase, myId]);
+    playersRef.current = players;
+  }, [phase, myId, players]);
   /** 亭主が抜けた／キックされたときの追い出し（二重実行防止） */
   const ejectLockRef = useRef(false);
   const ejectRef = useRef<(message: string, skipLeave?: boolean) => void>(
     () => {},
   );
+  const banishRef = useRef<() => void>(() => {});
+  /** 破門されたときに中央へ大きく出す */
+  const [banished, setBanished] = useState(false);
 
   useEffect(() => {
     setMyId(getOrCreatePlayerId());
@@ -242,17 +251,19 @@ export function GameApp() {
       subRef.current = subscribeOnlineRoom(
         id,
         (snapshot) => {
-          const self = myIdRef.current;
-          if (self && !snapshot.players.some((p) => p.id === self)) {
-            ejectRef.current("亭主に退出させられました", true);
-            return;
-          }
-          // 待機中に亭主が抜けたら、他の連衆も自動で退出
+          // 待機中・執筆中に亭主が抜けたら、他の連衆も自動で退出
+          // （部屋ごと消える途中で連衆が空になる場合もこちらで拾う）
           if (
-            snapshot.room.phase === "lobby" &&
+            (snapshot.room.phase === "lobby" ||
+              snapshot.room.phase === "writing") &&
             !snapshot.players.some((p) => p.isHost)
           ) {
-            ejectRef.current("亭主が和室を閉じました");
+            ejectRef.current("亭主が退出しました");
+            return;
+          }
+          const self = myIdRef.current;
+          if (self && !snapshot.players.some((p) => p.id === self)) {
+            banishRef.current();
             return;
           }
           applySnapshot(snapshot);
@@ -262,16 +273,38 @@ export function GameApp() {
           }
         },
         (error) => {
-          if (phaseRef.current === "lobby") {
-            ejectRef.current("亭主が和室を閉じました");
+          if (phaseRef.current === "lobby" || phaseRef.current === "writing") {
+            ejectRef.current("亭主が退出しました");
             return;
           }
           setErrorMessage(error.message);
+        },
+        (leaverId) => {
+          // リロード・タブを閉じた連衆の後片付けは、担当の一人だけが行う
+          const processor = leaveProcessorId(playersRef.current, leaverId);
+          if (!processor || processor !== myIdRef.current) return;
+          void handOverAndRemove({ roomId: id, leaverId }).catch((error) => {
+            setErrorMessage((error as Error).message);
+          });
         },
       );
     },
     [applySnapshot, clearSubscription],
   );
+
+  /** リロード・タブを閉じるときは、抜けることを他の連衆へ知らせる */
+  useEffect(() => {
+    if (!roomId || !myId) return;
+    const onPageHide = () => {
+      if (playersRef.current.length <= 1) {
+        deleteRoomOnUnload(roomId);
+        return;
+      }
+      subRef.current?.sendLeave?.(myId);
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [roomId, myId]);
 
   useEffect(() => () => clearSubscription(), [clearSubscription]);
 
@@ -531,6 +564,18 @@ export function GameApp() {
         },
       );
     };
+    banishRef.current = () => {
+      if (ejectLockRef.current || phaseRef.current === "home") return;
+      ejectLockRef.current = true;
+      clearSubscription();
+      setBanished(true);
+      void (async () => {
+        await sleep(BANISH_HOLD_MS);
+        await leaveRoomAndGoHome(lobbyBackStepRef.current, { skipLeave: true });
+        setBanished(false);
+        ejectLockRef.current = false;
+      })();
+    };
   });
 
   const handleKick = async (targetId: string) => {
@@ -545,7 +590,7 @@ export function GameApp() {
       });
       applySnapshot(snapshot);
     } catch (error) {
-      setErrorMessage((error as Error).message || "退出させられませんでした。");
+      setErrorMessage((error as Error).message || "破門できませんでした。");
     } finally {
       setBusy(false);
     }
@@ -1012,6 +1057,9 @@ export function GameApp() {
             onKick={(id) => {
               void handleKick(id);
             }}
+            onCloseRoom={() => {
+              void handleLeave();
+            }}
           />
         )}
 
@@ -1053,6 +1101,15 @@ export function GameApp() {
           transition: `opacity ${phaseVeilMs}ms ease-in-out`,
         }}
       />
+
+      {banished && (
+        <div
+          role="alert"
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-white"
+        >
+          <p className="text-8xl tracking-[0.3em] md:text-[12rem]">破門</p>
+        </div>
+      )}
     </div>
   );
 }

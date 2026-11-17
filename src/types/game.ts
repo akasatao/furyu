@@ -15,6 +15,8 @@ export interface Player {
   partIndexes: number[];
   /** オンラインの座席。リレーでは途中で抜けても詰めない */
   seat?: number;
+  /** 和室に入った時刻（亭主の引き継ぎ順に使う） */
+  joinedAt?: string;
 }
 
 export interface PoemLine {

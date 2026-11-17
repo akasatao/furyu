@@ -52,5 +52,6 @@ export function rowToPlayer(row: RoomPlayerRow): Player {
     color: row.color,
     partIndexes: row.part_indexes ?? [],
     seat: row.seat,
+    joinedAt: row.created_at,
   };
 }
