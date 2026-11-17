@@ -50,11 +50,11 @@ export function TanzakuCard({
   const totalWriteMs = delayMs;
 
   const ownerCornerClass =
-    "pointer-events-none absolute text-[10px] leading-relaxed tracking-[0.2em] text-black/55 [writing-mode:vertical-rl] md:text-sm md:tracking-[0.25em]";
+    "pointer-events-none absolute text-[10px] leading-relaxed tracking-[0.2em] text-black/55 [writing-mode:vertical-rl] md:text-[clamp(0.65rem,1.6dvh,0.875rem)] md:tracking-[0.25em]";
 
   return (
     <article
-      className="tanzaku relative flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[22rem] md:px-5 md:py-8"
+      className="tanzaku relative flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[min(22rem,42dvh)] md:px-5 md:py-[clamp(1rem,3dvh,2rem)]"
       data-write-ms={still ? undefined : totalWriteMs}
     >
       <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
@@ -70,23 +70,27 @@ export function TanzakuCard({
           </p>
         </>
       ) : (
-        <p className="mb-2 text-sm tracking-[0.35em] text-black/45 md:mb-4 md:text-xl">
+        <p className="mb-2 text-sm tracking-[0.35em] text-black/45 md:mb-[clamp(0.5rem,1.5dvh,1rem)] md:text-[clamp(0.875rem,2.5dvh,1.25rem)]">
           {still
             ? "風流オンライン"
             : MODE_LABEL[isShirazu ? "haiku" : poem.mode]}
         </p>
       )}
-      <div className="flex min-h-[220px] items-center justify-center py-3 md:min-h-[340px] md:py-5">
+      <div className="flex min-h-[220px] items-center justify-center py-3 md:min-h-[clamp(220px,42dvh,340px)] md:py-[clamp(0.75rem,2dvh,1.25rem)]">
         {showText ? (
           <p
             key="writing"
-            className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[2rem] md:leading-[2.15] md:tracking-[0.4em]"
+            className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
             lang="ja"
           >
             {poem.lines.map((line, i) => {
               const isLast = i === poem.lines.length - 1;
               const offset =
-                i === 0 ? "" : isLast ? "mt-10 md:mt-14" : "mt-4 md:mt-6";
+                i === 0
+                  ? ""
+                  : isLast
+                    ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
+                    : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
               return (
                 <span
                   key={i}
@@ -108,13 +112,17 @@ export function TanzakuCard({
         ) : showShirazuSlots ? (
           <p
             key="slots"
-            className="text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl] md:text-[2rem] md:leading-[2.15] md:tracking-[0.4em]"
+            className="text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
             lang="ja"
           >
             {PART_TARGETS.shirazu.map((target, i) => {
               const isLast = i === PART_TARGETS.shirazu.length - 1;
               const offset =
-                i === 0 ? "" : isLast ? "mt-10 md:mt-14" : "mt-4 md:mt-6";
+                i === 0
+                  ? ""
+                  : isLast
+                    ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
+                    : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
               return (
                 <span key={i} className={`${offset} block`.trim()}>
                   {formatShirazuLineWithSlots("", target)}
@@ -125,7 +133,7 @@ export function TanzakuCard({
         ) : null}
       </div>
       {!ownerLabel && (
-        <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-2 text-center text-[10px] leading-relaxed tracking-wider text-black/50 md:mt-2 md:max-w-[18rem] md:pt-3 md:text-sm">
+        <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-2 text-center text-[10px] leading-relaxed tracking-wider text-black/50 md:mt-[clamp(0.25rem,1dvh,0.5rem)] md:max-w-[18rem] md:pt-[clamp(0.5rem,1.5dvh,0.75rem)] md:text-[clamp(0.65rem,1.5dvh,0.875rem)]">
           {showAnonymous ? (
             <span className="block">{MODE_LABEL.shirazu}</span>
           ) : (

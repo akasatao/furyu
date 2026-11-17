@@ -138,10 +138,10 @@ export function RevealPhase({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col items-center gap-3 md:max-w-3xl md:flex-none md:gap-8">
-      <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
+    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col items-center gap-3 md:max-w-3xl md:gap-[clamp(0.75rem,2.5dvh,2rem)]">
+      <header className="shrink-0 space-y-1.5 text-center">
         <p className="text-xs tracking-[0.35em] text-black/50">披露</p>
-        <h2 className="text-xl tracking-widest md:text-4xl">
+        <h2 className="text-xl tracking-widest md:text-[clamp(1.25rem,4dvh,2.25rem)]">
           {isShirazu
             ? showGallery
               ? `${MODE_LABEL.shirazu}・${toKanji(poems.length)}首が完成`
@@ -149,17 +149,21 @@ export function RevealPhase({
             : `${MODE_LABEL[poems[0].mode]}が完成`}
         </h2>
         {theme.trim() ? (
-          <p className="text-sm tracking-[0.2em] text-black/55 md:text-base">
+          <p className="text-sm tracking-[0.2em] text-black/55">
             お題：{theme.trim()}
           </p>
         ) : null}
       </header>
 
       {isShirazu ? (
-        <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto md:flex-none md:overflow-visible">
+        <div
+          className={`flex min-h-0 w-full flex-1 flex-col items-center ${
+            showGallery ? "overflow-y-auto" : "overflow-hidden"
+          }`}
+        >
           {waitingToStart && (
-            <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 md:gap-6">
-              <p className="text-center text-base tracking-[0.35em] text-black/55 md:text-xl">
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
+              <p className="text-center text-base tracking-[0.35em] text-black/55 md:text-[clamp(1rem,2.5dvh,1.25rem)]">
                 {`${toKanji(poemCount)}首がそろいました`}
               </p>
               {isHost && onAdvanceReveal ? (
@@ -167,12 +171,12 @@ export function RevealPhase({
                   type="button"
                   disabled={advancing}
                   onClick={onAdvanceReveal}
-                  className="brush-btn w-full max-w-[15rem] px-4 py-3 text-base tracking-[0.25em] md:max-w-[22rem] md:py-4 md:text-lg"
+                  className="brush-btn w-full max-w-[15rem] px-4 py-3 text-base tracking-[0.25em] md:max-w-[min(22rem,42dvh)] md:py-[clamp(0.75rem,2dvh,1rem)]"
                 >
                   {advancing ? "進め中…" : "披露する"}
                 </button>
               ) : (
-                <p className="text-center text-xl tracking-[0.2em] text-black/55 md:text-3xl">
+                <p className="text-center text-xl tracking-[0.2em] text-black/55 md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
                   亭主が披露するのを待っています
                 </p>
               )}
@@ -180,11 +184,11 @@ export function RevealPhase({
           )}
 
           {presentPoem && presentIndex != null && (
-            <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 md:gap-6">
-              <p className="text-center text-2xl tracking-[0.35em] md:text-5xl">
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
+              <p className="shrink-0 text-center text-2xl tracking-[0.35em] md:text-[clamp(1.5rem,5dvh,3rem)]">
                 {shirazuOwnerLabel(presentPoem, myId) ?? "名無しの句"}
               </p>
-              <div className="w-full max-w-[15rem] md:max-w-[22rem]">
+              <div className="w-full max-w-[15rem] md:max-w-[min(22rem,42dvh)]">
                 <TanzakuCard
                   key={`present-${presentPoem.id}-${presentIndex}-${presentWriting}`}
                   poem={presentPoem}
@@ -198,7 +202,7 @@ export function RevealPhase({
                   type="button"
                   disabled={advancing}
                   onClick={onAdvanceReveal}
-                  className="brush-btn w-full max-w-[15rem] px-4 py-3 text-base tracking-[0.25em] md:max-w-[22rem] md:py-4 md:text-lg"
+                  className="brush-btn w-full max-w-[15rem] shrink-0 px-4 py-3 text-base tracking-[0.25em] md:max-w-[min(22rem,42dvh)] md:py-[clamp(0.75rem,2dvh,1rem)]"
                 >
                   {advancing
                     ? "進め中…"
@@ -207,7 +211,7 @@ export function RevealPhase({
                       : "次の人へ"}
                 </button>
               ) : (
-                <p className="text-center text-xl tracking-[0.2em] text-black/55 md:text-3xl">
+                <p className="shrink-0 text-center text-xl tracking-[0.2em] text-black/55 md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
                   {presentIndex >= poemCount - 1
                     ? "亭主が結果を出すのを待っています"
                     : "亭主が次へ進めるのを待っています"}
@@ -217,11 +221,11 @@ export function RevealPhase({
           )}
 
           {showGallery && (
-            <div className="flex w-full flex-col items-center gap-6 md:gap-10">
+            <div className="flex w-full flex-col items-center gap-6 md:gap-[clamp(1.5rem,4dvh,2.5rem)]">
               {poems.map((poem) => (
                 <div
                   key={poem.id}
-                  className="flex w-full max-w-[15rem] shrink-0 flex-col items-center gap-2 md:max-w-[22rem]"
+                  className="flex w-full max-w-[15rem] shrink-0 flex-col items-center gap-2 md:max-w-[min(22rem,42dvh)]"
                 >
                   <TanzakuCard
                     poem={poem}
@@ -249,16 +253,16 @@ export function RevealPhase({
         </div>
       ) : (
         <div
-          className={`flex min-h-0 w-full flex-1 overflow-y-auto md:flex-none md:overflow-visible ${
+          className={`flex min-h-0 w-full flex-1 overflow-y-auto ${
             poems.length > 1
-              ? "flex-col items-center gap-4 md:gap-10"
-              : "max-w-[15rem] justify-center md:max-w-[22rem]"
+              ? "flex-col items-center gap-4 md:gap-[clamp(1.5rem,4dvh,2.5rem)]"
+              : "max-w-[15rem] justify-center md:max-w-[min(22rem,42dvh)]"
           }`}
         >
           {poems.map((poem) => (
             <div
               key={poem.id}
-              className="w-full max-w-[15rem] shrink-0 md:max-w-[22rem]"
+              className="w-full max-w-[15rem] shrink-0 md:max-w-[min(22rem,42dvh)]"
             >
               <TanzakuCard poem={poem} writing={revealReady} />
             </div>
@@ -310,7 +314,7 @@ export function RevealPhase({
             <button
               type="button"
               onClick={onRematch}
-              className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
+              className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
             >
               {isSolo ? "もう一度詠む" : "再び宴を開く（もう一度）"}
             </button>

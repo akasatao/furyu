@@ -157,10 +157,10 @@ export function ShirazuWritingPhase({
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col md:max-w-2xl md:flex-none ${
+      className={`mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col md:max-w-2xl ${
         compact || hasSubmitted
-          ? "gap-2 overflow-hidden md:gap-5"
-          : "gap-3 overflow-x-hidden md:gap-5"
+          ? "gap-2 overflow-hidden md:gap-[clamp(0.5rem,2dvh,1.25rem)]"
+          : "gap-3 overflow-x-hidden md:gap-[clamp(0.5rem,2dvh,1.25rem)]"
       }`}
     >
       <header
@@ -179,7 +179,7 @@ export function ShirazuWritingPhase({
         </p>
         {!compact && (
           <>
-            <h2 className="text-xl tracking-widest md:text-4xl">
+            <h2 className="text-xl tracking-widest md:text-[clamp(1.25rem,4dvh,2.25rem)]">
               {partHeading}
             </h2>
             <p className="text-[10px] tracking-[0.15em] text-black/50 md:text-sm">
@@ -212,7 +212,7 @@ export function ShirazuWritingPhase({
           className={`tanzaku relative flex w-full shrink-0 flex-col items-center ${
             compact
               ? "max-w-[7.5rem] px-2 py-2"
-              : "max-w-[14rem] px-3 py-5 md:max-w-[18rem] md:px-4 md:py-6"
+              : "max-w-[14rem] px-3 py-5 md:max-w-[min(18rem,38dvh)] md:px-4 md:py-[clamp(0.75rem,2.5dvh,1.5rem)]"
           }`}
         >
           <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
@@ -240,14 +240,16 @@ export function ShirazuWritingPhase({
           ) : null}
           <div
             className={`flex items-center justify-center ${
-              compact ? "py-1" : "min-h-[220px] py-3 md:min-h-[280px] md:py-4"
+              compact
+                ? "py-1"
+                : "min-h-[220px] py-3 md:min-h-[clamp(180px,36dvh,280px)] md:py-[clamp(0.5rem,1.5dvh,1rem)]"
             }`}
           >
             <p
               className={`[writing-mode:vertical-rl] ${
                 compact
                   ? "text-[0.85rem] leading-[1.55] tracking-[0.2em]"
-                  : "text-[1.35rem] leading-[2] tracking-[0.35em] md:text-[1.6rem]"
+                  : "text-[1.35rem] leading-[2] tracking-[0.35em] md:text-[clamp(1.2rem,2.8dvh,1.6rem)]"
               }`}
               lang="ja"
             >
@@ -294,7 +296,7 @@ export function ShirazuWritingPhase({
               compact ? "py-3" : "py-6"
             }`}
           >
-            <p className="animate-pulse text-base tracking-widest text-black/70 md:text-xl">
+            <p className="animate-pulse text-base tracking-widest text-black/70 md:text-[clamp(1rem,2.5dvh,1.25rem)]">
               他の連衆を待っています
             </p>
             <p className="mt-2 text-sm text-black/45">
@@ -364,7 +366,7 @@ export function ShirazuWritingPhase({
               className={`brush-input w-full px-4 text-center tracking-[0.5em] ${
                 compact
                   ? "py-2 text-2xl"
-                  : "py-3 text-3xl md:py-4 md:text-4xl"
+                  : "py-3 text-3xl md:py-[clamp(0.75rem,2dvh,1rem)] md:text-[clamp(1.75rem,4.5dvh,2.25rem)]"
               }`}
               autoFocus
             />
@@ -375,7 +377,7 @@ export function ShirazuWritingPhase({
               className={`brush-btn w-full px-4 tracking-[0.25em] ${
                 compact
                   ? "py-2 text-sm"
-                  : "py-3 text-base md:py-4 md:text-lg"
+                  : "py-3 text-base md:py-[clamp(0.75rem,2dvh,1rem)]"
               }`}
             >
               {submitLabel}

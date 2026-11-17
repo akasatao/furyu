@@ -302,10 +302,10 @@ export function HomeScreen({
   return (
     <div
       ref={rootRef}
-      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-x-hidden bg-white md:max-w-2xl md:min-h-[42rem] ${
+      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-x-hidden bg-white md:max-w-2xl ${
         inputFocused || step === "history"
-          ? "overflow-y-auto overscroll-x-none overscroll-y-contain touch-pan-y md:overflow-y-auto"
-          : "overflow-hidden md:overflow-hidden"
+          ? "overflow-y-auto overscroll-x-none overscroll-y-contain touch-pan-y"
+          : "overflow-hidden"
       }`}
     >
       <div
@@ -314,8 +314,8 @@ export function HomeScreen({
         } ${
           step === "mode"
             ? inputFocused
-              ? "justify-start gap-2 pb-4 md:justify-start md:gap-6"
-              : "justify-center gap-3 md:justify-start md:gap-6"
+              ? "justify-start gap-2 pb-4 md:gap-[clamp(0.5rem,2dvh,1.5rem)]"
+              : "justify-center gap-3 md:gap-[clamp(0.5rem,2dvh,1.5rem)]"
             : step === "history"
               ? "gap-3 overflow-y-auto overscroll-contain pb-4"
               : step === "theme"
@@ -326,19 +326,19 @@ export function HomeScreen({
         {step === "mode" ? (
           <>
             <header
-              className={`shrink-0 text-center md:space-y-3 ${
+              className={`shrink-0 text-center md:space-y-[clamp(0.25rem,1dvh,0.75rem)] ${
                 inputFocused ? "space-y-1" : "space-y-1.5"
               }`}
             >
               <hr className="brush-line mx-auto w-10 md:w-14" />
               <h1
-                className={`tracking-[0.2em] md:text-6xl ${
+                className={`tracking-[0.2em] md:text-[clamp(2rem,7dvh,3.75rem)] ${
                   inputFocused ? "text-2xl" : "text-3xl"
                 }`}
               >
                 風流
                 <span
-                  className={`mt-0.5 block tracking-[0.35em] text-black/55 md:mt-1 md:text-2xl ${
+                  className={`mt-0.5 block tracking-[0.35em] text-black/55 md:mt-1 md:text-[clamp(0.875rem,2.5dvh,1.5rem)] ${
                     inputFocused ? "text-sm" : "text-base"
                   }`}
                 >
@@ -349,13 +349,13 @@ export function HomeScreen({
             </header>
 
             <form
-              className="block shrink-0 space-y-1.5 md:space-y-2"
+              className="block shrink-0 space-y-1.5"
               onSubmit={(e) => {
                 e.preventDefault();
                 endInputMode();
               }}
             >
-              <label className="block space-y-1.5 md:space-y-2">
+              <label className="block space-y-1.5">
                 <span className="text-sm tracking-widest text-black/70">
                   雅号
                 </span>
@@ -370,26 +370,16 @@ export function HomeScreen({
                   onFocus={() => handleInputFocus(false)}
                   onBlur={handleInputBlur}
                   onChange={(e) => onNicknameChange(e.target.value)}
-                  className="brush-input w-full px-4 py-2.5 text-base md:py-3.5 md:text-lg"
+                  className="brush-input w-full px-4 py-2.5 text-base md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-lg"
                 />
               </label>
             </form>
 
-            <section
-              className={`brush-box flex shrink-0 flex-col gap-2 p-3 md:flex-none md:gap-3 md:p-4 ${
-                inputFocused ? "" : "min-h-0 flex-1 md:flex-none"
-              }`}
-            >
+            <section className="brush-box flex shrink-0 flex-col gap-2 p-3 md:gap-[clamp(0.5rem,1.5dvh,0.75rem)] md:p-[clamp(0.75rem,2dvh,1rem)]">
               <p className="shrink-0 text-sm tracking-widest text-black/70">
                 モードを選ぶ
               </p>
-              <div
-                className={`flex flex-col gap-2 md:flex-none ${
-                  inputFocused
-                    ? "shrink-0"
-                    : "min-h-0 flex-1 justify-center md:flex-none"
-                }`}
-              >
+              <div className="flex shrink-0 flex-col gap-2">
                 {MODES.map((m) => (
                   <button
                     key={m}
@@ -401,7 +391,7 @@ export function HomeScreen({
                     onPointerCancel={releaseChoice}
                     onPointerLeave={releaseChoice}
                     aria-pressed={pressedChoice === m}
-                    className={`brush-btn-outline w-full tracking-[0.35em] md:py-5 md:text-2xl ${
+                    className={`brush-btn-outline w-full tracking-[0.35em] md:py-[clamp(0.75rem,2.5dvh,1.25rem)] md:text-[clamp(1.125rem,3dvh,1.5rem)] ${
                       inputFocused
                         ? "px-4 py-2.5 text-base"
                         : "px-4 py-3.5 text-lg"
@@ -413,7 +403,7 @@ export function HomeScreen({
               </div>
             </section>
 
-            <div className="brush-box shrink-0 p-3 md:p-4">
+            <div className="brush-box shrink-0 p-3 md:p-[clamp(0.75rem,2dvh,1rem)]">
               <p className="mb-2 text-sm tracking-widest text-black/70">
                 ルームコードで入る
               </p>
@@ -452,7 +442,7 @@ export function HomeScreen({
                     }
                     setJoinCode(normalizeRoomCode(value));
                   }}
-                  className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em] md:py-3.5 md:text-lg"
+                  className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em] md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-lg"
                 />
                 <button
                   type="submit"
@@ -462,7 +452,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "join"}
-                  className={`brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest md:px-5 md:py-3.5 md:text-base ${
+                  className={`brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest md:px-5 md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-base ${
                     pressedChoice === "join" ? "is-pressed" : ""
                   }`}
                 >
@@ -481,7 +471,7 @@ export function HomeScreen({
                 onClick={() => {
                   void goToStep("history");
                 }}
-                className="brush-btn-outline w-full shrink-0 px-4 py-3 text-sm tracking-[0.35em] md:py-3.5 md:text-base"
+                className="brush-btn-outline w-full shrink-0 px-4 py-3 text-sm tracking-[0.35em] md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-base"
               >
                 今まで詠んだ句（{toKanji(poemHistory.length)}）
               </button>
@@ -498,21 +488,23 @@ export function HomeScreen({
               >
                 ← 戻る
               </button>
-              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
                 {MODE_LABEL[mode]}
               </p>
               <span className="w-12" aria-hidden />
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 px-1 py-4 md:gap-6">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 px-1 py-4 md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
               <header className="space-y-1 text-center">
-                <h2 className="text-3xl tracking-[0.35em] md:text-5xl">お題</h2>
+                <h2 className="text-3xl tracking-[0.35em] md:text-[clamp(1.75rem,5dvh,3rem)]">
+                  お題
+                </h2>
                 <p className="text-sm tracking-widest text-black/45">
                   空欄のまま進んでも構いません
                 </p>
               </header>
 
-              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
+              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-[clamp(0.5rem,2dvh,1rem)]">
                 <input
                   ref={themeInputRef}
                   type="text"
@@ -527,13 +519,13 @@ export function HomeScreen({
                     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                     if (e.key === "Enter") handleConfirmTheme();
                   }}
-                  className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-4 md:text-2xl"
+                  className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-[clamp(0.75rem,2dvh,1rem)] md:text-[clamp(1.25rem,3dvh,1.5rem)]"
                 />
                 <button
                   type="button"
                   disabled={isLocked}
                   onClick={pickRandomTheme}
-                  className="brush-btn-outline w-full px-4 py-3 text-sm tracking-[0.35em] md:py-3.5 md:text-base"
+                  className="brush-btn-outline w-full px-4 py-3 text-sm tracking-[0.35em] md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-base"
                 >
                   ランダムなお題
                 </button>
@@ -541,7 +533,7 @@ export function HomeScreen({
                   type="button"
                   disabled={isLocked}
                   onClick={handleConfirmTheme}
-                  className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl"
+                  className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-[clamp(0.75rem,2.5dvh,1.25rem)] md:text-[clamp(1rem,2.5dvh,1.25rem)]"
                 >
                   このお題で進む
                 </button>
@@ -561,12 +553,12 @@ export function HomeScreen({
               >
                 ← 戻る
               </button>
-              <h2 className="text-lg tracking-[0.35em] md:text-2xl">
+              <h2 className="text-lg tracking-[0.35em] md:text-[clamp(1.125rem,3dvh,1.5rem)]">
                 今まで詠んだ句
               </h2>
               <span className="w-12" aria-hidden />
             </div>
-            <div className="flex flex-col items-center gap-8 pb-4">
+            <div className="flex flex-col items-center gap-8 pb-4 md:gap-[clamp(1.5rem,4dvh,2rem)]">
               {poemHistory.map((entry) => {
                 const poem = historyEntryToPoem(entry);
                 const title =
@@ -576,7 +568,7 @@ export function HomeScreen({
                 return (
                   <div
                     key={entry.id}
-                    className="flex w-full max-w-[15rem] flex-col items-center gap-2 md:max-w-[18rem]"
+                    className="flex w-full max-w-[15rem] flex-col items-center gap-2 md:max-w-[min(18rem,38dvh)]"
                   >
                     <p className="text-center text-xs tracking-widest text-black/45">
                       {formatHistoryDate(entry.savedAt)}
@@ -608,17 +600,17 @@ export function HomeScreen({
               >
                 ← 戻る
               </button>
-              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
                 {MODE_LABEL[mode]}
               </p>
               <span className="w-12" aria-hidden />
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-1 py-4">
-              <h2 className="text-center text-3xl tracking-[0.35em] md:text-5xl">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-1 py-4 md:gap-[clamp(1rem,3dvh,2rem)]">
+              <h2 className="text-center text-3xl tracking-[0.35em] md:text-[clamp(1.75rem,5dvh,3rem)]">
                 どう詠む？
               </h2>
-              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
+              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-[clamp(0.5rem,2dvh,1rem)]">
                 <button
                   type="button"
                   disabled={isLocked}
@@ -628,7 +620,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "solo"}
-                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-7 md:text-4xl ${
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-[clamp(1rem,4dvh,1.75rem)] md:text-[clamp(1.5rem,4.5dvh,2.25rem)] ${
                     pressedChoice === "solo" ? "is-pressed" : ""
                   }`}
                 >
@@ -643,7 +635,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "multi"}
-                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-7 md:text-4xl ${
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-[clamp(1rem,4dvh,1.75rem)] md:text-[clamp(1.5rem,4.5dvh,2.25rem)] ${
                     pressedChoice === "multi" ? "is-pressed" : ""
                   }`}
                 >

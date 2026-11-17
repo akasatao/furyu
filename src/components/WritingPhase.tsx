@@ -94,7 +94,7 @@ export function WritingPhase({
 
   if (isSolo) {
     return (
-      <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:flex-none md:gap-6">
+      <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
         {onBack && (
           <div className="flex shrink-0 items-center justify-between gap-2 px-1">
             <button
@@ -112,7 +112,7 @@ export function WritingPhase({
           </div>
         )}
 
-        <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
+        <header className="shrink-0 space-y-1.5 text-center">
           {!onBack && (
             <p className="text-xs tracking-[0.4em] text-black/45">
               ひとりで詠む　{MODE_LABEL[mode]}
@@ -123,7 +123,7 @@ export function WritingPhase({
               {MODE_LABEL[mode]}
             </p>
           )}
-          <h2 className="text-2xl tracking-[0.2em] md:text-5xl">
+          <h2 className="text-2xl tracking-[0.2em] md:text-[clamp(1.5rem,5dvh,3rem)]">
             {isShirazu ? "一音を詠む" : label}
           </h2>
           <p className="text-sm tracking-[0.25em] text-black/50">
@@ -131,14 +131,14 @@ export function WritingPhase({
             {progressLabel ? `　${progressLabel}` : ""}
           </p>
           {theme.trim() ? (
-            <p className="text-sm tracking-[0.2em] text-black/55 md:text-base">
+            <p className="text-sm tracking-[0.2em] text-black/55">
               お題：{theme.trim()}
             </p>
           ) : null}
         </header>
 
         {/* 上寄りにまとめ、キーボードで高さが減っても内側だけスクロール */}
-        <div className="flex min-h-0 flex-1 flex-col justify-start gap-4 overflow-y-auto overscroll-contain pt-2 md:justify-center md:pt-0">
+        <div className="flex min-h-0 flex-1 flex-col justify-start gap-4 overflow-y-auto overscroll-contain pt-2 md:justify-center md:gap-[clamp(0.75rem,2.5dvh,1rem)] md:pt-0">
           {promptLines.length > 0 && (
             <section className="shrink-0 px-1 py-1 text-center">
               <ul className="space-y-2">
@@ -156,7 +156,7 @@ export function WritingPhase({
                       <p className="text-[10px] tracking-widest text-black/35">
                         {displayLabel}
                       </p>
-                      <p className="text-xl tracking-widest md:text-3xl">
+                      <p className="text-xl tracking-widest md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
                         {line.text}
                         {isCurrent ? "…" : ""}
                       </p>
@@ -200,10 +200,10 @@ export function WritingPhase({
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === "Enter" && canSubmit) onSubmit();
               }}
-              className={`brush-input w-full px-4 py-4 md:py-5 ${
+              className={`brush-input w-full px-4 py-4 md:py-[clamp(0.75rem,2.5dvh,1.25rem)] ${
                 isShirazu
-                  ? "text-center text-4xl tracking-[0.5em] md:text-5xl"
-                  : "text-center text-2xl tracking-widest md:text-3xl"
+                  ? "text-center text-4xl tracking-[0.5em] md:text-[clamp(2rem,5dvh,3rem)]"
+                  : "text-center text-2xl tracking-widest md:text-[clamp(1.5rem,4dvh,1.875rem)]"
               }`}
               autoFocus
             />
@@ -211,7 +211,7 @@ export function WritingPhase({
               type="button"
               disabled={!canSubmit}
               onClick={onSubmit}
-              className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl"
+              className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-[clamp(0.75rem,2.5dvh,1.25rem)] md:text-[clamp(1rem,2.5dvh,1.25rem)]"
             >
               {submitLabel}
             </button>
@@ -222,12 +222,12 @@ export function WritingPhase({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:flex-none md:gap-6">
-      <header className="shrink-0 space-y-0.5 text-center md:space-y-1">
+    <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
+      <header className="shrink-0 space-y-0.5 text-center">
         <p className="text-[10px] tracking-[0.35em] text-black/55 md:text-xs">
           {MODE_LABEL[mode]}　{toKanji(stepIndex + 1)}／{toKanji(total)}
         </p>
-        <h2 className="text-xl tracking-widest md:text-4xl">
+        <h2 className="text-xl tracking-widest md:text-[clamp(1.25rem,4dvh,2.25rem)]">
           {isShirazu ? "一音を詠む" : label}
         </h2>
         {progressLabel && (
@@ -246,8 +246,8 @@ export function WritingPhase({
       </header>
 
       {promptLines.length > 0 && (
-        <section className="brush-box min-h-0 overflow-y-auto px-4 py-2.5 md:overflow-visible md:px-5 md:py-4">
-          <p className="mb-1.5 text-xs tracking-widest text-black/50 md:mb-2">
+        <section className="brush-box max-h-[40%] shrink-0 overflow-y-auto px-4 py-2.5 md:px-5 md:py-[clamp(0.5rem,1.5dvh,1rem)]">
+          <p className="mb-1.5 text-xs tracking-widest text-black/50">
             {isShirazu ? "ここまでの音" : "ここまでの句"}
           </p>
           <ul className="space-y-1 md:space-y-1.5">
@@ -284,8 +284,8 @@ export function WritingPhase({
       )}
 
       {waitingForPartner || !isMyTurn ? (
-        <section className="brush-box mt-auto px-4 py-6 text-center md:mt-0 md:py-12">
-          <p className="animate-pulse text-base tracking-widest text-black/70 md:text-xl">
+        <section className="brush-box mx-auto mt-auto w-full shrink-0 px-4 py-6 text-center md:mt-auto md:py-[clamp(1.5rem,4dvh,3rem)]">
+          <p className="animate-pulse text-base tracking-widest text-black/70 md:text-[clamp(1rem,2.5dvh,1.25rem)]">
             {writer.name} が合わせを考え中…
           </p>
           <p className="mt-2 text-sm text-black/45">
@@ -293,7 +293,7 @@ export function WritingPhase({
           </p>
         </section>
       ) : (
-        <div className="mt-auto space-y-2 md:mt-0">
+        <div className="mt-auto shrink-0 space-y-2">
           <label
             htmlFor="line-input"
             className="text-sm tracking-widest text-black/70"
@@ -332,9 +332,9 @@ export function WritingPhase({
               if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === "Enter" && canSubmit) onSubmit();
             }}
-            className={`brush-input w-full px-4 py-3 md:py-4 ${
+            className={`brush-input w-full px-4 py-3 md:py-[clamp(0.75rem,2dvh,1rem)] ${
               isShirazu
-                ? "text-center text-3xl tracking-[0.5em] md:text-4xl"
+                ? "text-center text-3xl tracking-[0.5em] md:text-[clamp(1.75rem,4.5dvh,2.25rem)]"
                 : "text-lg md:text-xl"
             }`}
             autoFocus
@@ -343,7 +343,7 @@ export function WritingPhase({
             type="button"
             disabled={!canSubmit}
             onClick={onSubmit}
-            className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
+            className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
           >
             {submitLabel}
           </button>

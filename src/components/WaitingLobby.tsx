@@ -34,7 +34,7 @@ export function WaitingLobby({
   onLeave,
 }: WaitingLobbyProps) {
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col gap-3 md:max-w-xl md:flex-none md:gap-6">
+    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col gap-3 md:max-w-xl md:gap-[clamp(0.75rem,2.5dvh,1.5rem)]">
       <div className="flex shrink-0 items-center justify-between gap-2 px-1">
         <button
           type="button"
@@ -48,52 +48,56 @@ export function WaitingLobby({
         <span className="w-12" aria-hidden />
       </div>
 
-      <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
-        <h2 className="text-2xl tracking-widest md:text-4xl">和室 {roomCode}</h2>
-        <p className="text-sm tracking-wider text-black/55 md:text-base">
+      <header className="shrink-0 space-y-1.5 text-center">
+        <h2 className="text-2xl tracking-widest md:text-[clamp(1.5rem,4.5dvh,2.25rem)]">
+          和室 {roomCode}
+        </h2>
+        <p className="text-sm tracking-wider text-black/55">
           {MODE_LABEL[mode]}・{toKanji(players.length)}／{toKanji(maxPlayers)}人
         </p>
         {theme.trim() ? (
-          <p className="text-base tracking-[0.2em] text-black/70 md:text-lg">
+          <p className="text-base tracking-[0.2em] text-black/70">
             お題：{theme.trim()}
           </p>
         ) : null}
       </header>
 
-      <section className="brush-box flex min-h-0 flex-1 flex-col p-3 md:flex-none md:overflow-visible md:p-5">
-        <h3 className="mb-2 shrink-0 border-b-2 border-black pb-2 text-sm tracking-widest text-black/70 md:mb-3 md:text-base">
-          連衆
-        </h3>
-        <ul className="min-h-0 space-y-2 overflow-y-auto md:space-y-3 md:overflow-visible">
-          {players.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-black text-sm text-white md:h-11 md:w-11 md:text-base">
-                {p.name.slice(0, 1)}
-              </span>
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <p className="min-w-0 truncate md:text-lg">{p.name}</p>
-                {p.isHost && (
-                  <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
-                    亭主
-                  </span>
-                )}
-                {p.id === myId ? (
-                  <span className="shrink-0 text-xs text-black/45">（あなた）</span>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <section className="brush-box p-3 md:p-[clamp(0.75rem,2dvh,1.25rem)]">
+          <h3 className="mb-2 shrink-0 border-b-2 border-black pb-2 text-sm tracking-widest text-black/70">
+            連衆
+          </h3>
+          <ul className="space-y-2 md:space-y-3">
+            {players.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-[clamp(0.5rem,1.5dvh,0.75rem)]"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-black text-sm text-white md:h-10 md:w-10">
+                  {p.name.slice(0, 1)}
+                </span>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <p className="min-w-0 truncate md:text-base">{p.name}</p>
+                  {p.isHost && (
+                    <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
+                      亭主
+                    </span>
+                  )}
+                  {p.id === myId ? (
+                    <span className="shrink-0 text-xs text-black/45">（あなた）</span>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
 
       <button
         type="button"
         disabled={!isHost || players.length < ONLINE_MIN_PLAYERS || busy}
         onClick={onStart}
-        className="brush-btn w-full shrink-0 px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
+        className="brush-btn w-full shrink-0 px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
       >
         {!isHost
           ? "亭主の開宴を待っています"

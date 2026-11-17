@@ -796,7 +796,7 @@ export function GameApp() {
 
   return (
     <div
-      className="relative flex h-dvh flex-1 flex-col overflow-hidden overflow-x-hidden bg-white text-black select-none md:h-auto md:min-h-dvh md:overflow-visible"
+      className="relative flex h-dvh min-h-0 flex-1 flex-col overflow-hidden overflow-x-hidden bg-white text-black select-none"
       onCopy={(e) => {
         const target = e.target as HTMLElement | null;
         if (
@@ -837,7 +837,7 @@ export function GameApp() {
       >
         {APP_VERSION}
       </p>
-      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:max-w-5xl md:px-8 md:py-12">
+      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:max-w-5xl md:px-8 md:py-[clamp(0.75rem,3dvh,3rem)]">
         {phase === "home" && (
           <HomeScreen
             key={homeStep}
