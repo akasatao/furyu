@@ -98,8 +98,13 @@ const NAV_HOLD_MS = 120;
 /** 破門の文字を見せておく時間 */
 const BANISH_HOLD_MS = 2200;
 /** スタンプ連打の間引き */
-const STAMP_THROTTLE_MS = 400;
-const MAX_BALLOONS = 30;
+const STAMP_THROTTLE_MS = 120;
+const MAX_BALLOONS = 60;
+/** 風船は右下のボタンのすぐ左から出る（px） */
+const STAMP_BASE_RIGHT_PX = 78;
+/** 同時に送っている人がいるとき、一人ずつ左へずらす幅 */
+const STAMP_LANE_PX = 88;
+const STAMP_JITTER_PX = 28;
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -148,6 +153,10 @@ export function GameApp() {
   /** 開宴前の幕などスタンプを出せないあいだに届いたものは捨てる */
   const stampOpenRef = useRef(false);
   const lastStampAtRef = useRef(0);
+  /** まだ昇っている風船の送り主とレーン。同時の送り主を横にずらす */
+  const balloonLanesRef = useRef<
+    { key: string; playerId: string; lane: number }[]
+  >([]);
   const fadingRef = useRef(false);
   const submitLockRef = useRef(false);
   /** 同じ対局の句を二重保存しない */
@@ -314,22 +323,47 @@ export function GameApp() {
     if (shirazuRound != null) setLocalDraft("");
   }, [shirazuRound]);
 
-  const addBalloon = useCallback((stamp: StampId, name: string) => {
-    setBalloons((prev) =>
-      [
-        ...prev,
-        {
-          key: uid("st"),
-          stamp,
-          name,
-          x: 10 + Math.random() * 80,
-          sway: Math.random() * 2 - 1,
-        },
-      ].slice(-MAX_BALLOONS),
-    );
-  }, []);
+  const addBalloon = useCallback(
+    (stamp: StampId, name: string, playerId: string) => {
+      const active = balloonLanesRef.current;
+      const held = active.find((b) => b.playerId === playerId);
+      let lane = 0;
+      if (held) {
+        lane = held.lane;
+      } else {
+        const used = new Set(active.map((b) => b.lane));
+        while (used.has(lane)) lane += 1;
+      }
+      const width = Math.max(window.innerWidth, 320);
+      const jitter = (Math.random() - 0.5) * STAMP_JITTER_PX;
+      const rightPx = Math.min(
+        width - 40,
+        STAMP_BASE_RIGHT_PX + lane * STAMP_LANE_PX + jitter,
+      );
+      const key = uid("st");
+      balloonLanesRef.current = [...active, { key, playerId, lane }].slice(
+        -MAX_BALLOONS,
+      );
+      setBalloons((prev) =>
+        [
+          ...prev,
+          {
+            key,
+            stamp,
+            name,
+            x: ((width - rightPx) / width) * 100,
+            sway: Math.random() * 2 - 1,
+          },
+        ].slice(-MAX_BALLOONS),
+      );
+    },
+    [],
+  );
 
   const removeBalloon = useCallback((key: string) => {
+    balloonLanesRef.current = balloonLanesRef.current.filter(
+      (b) => b.key !== key,
+    );
     setBalloons((prev) => prev.filter((b) => b.key !== key));
   }, []);
 
@@ -447,7 +481,7 @@ export function GameApp() {
           if (!stampOpenRef.current || stamp.playerId === myIdRef.current) {
             return;
           }
-          addBalloon(stamp.stamp, stamp.name);
+          addBalloon(stamp.stamp, stamp.name, stamp.playerId);
         },
       );
     },
@@ -509,6 +543,7 @@ export function GameApp() {
   }
   useEffect(() => {
     stampOpenRef.current = canStamp;
+    if (!canStamp) balloonLanesRef.current = [];
   }, [canStamp]);
 
   const handleStamp = useCallback(
@@ -521,7 +556,7 @@ export function GameApp() {
         playersRef.current.find((p) => p.id === myId)?.name ??
         spectatorsRef.current.find((p) => p.id === myId)?.name ??
         displayName;
-      addBalloon(stamp, name);
+      addBalloon(stamp, name, myId);
       subRef.current?.sendStamp({ stamp, playerId: myId, name });
     },
     [addBalloon, displayName, myId],

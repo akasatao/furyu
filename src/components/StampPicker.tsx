@@ -8,7 +8,7 @@ interface StampPickerProps {
   onSelect: (stamp: StampId) => void;
 }
 
-/** 披露中の右下スタンプボタン。押すとトレイが開き、選ぶと送って閉じる */
+/** 披露中の右下スタンプボタン。押すとトレイが開き、開いているあいだは連打できる */
 export function StampPicker({ onSelect }: StampPickerProps) {
   const [open, setOpen] = useState(false);
 
@@ -34,11 +34,8 @@ export function StampPicker({ onSelect }: StampPickerProps) {
                 type="button"
                 role="menuitem"
                 aria-label={STAMP_LABEL[stamp]}
-                onClick={() => {
-                  onSelect(stamp);
-                  setOpen(false);
-                }}
-                className="flex h-14 w-14 items-center justify-center hover:bg-black/5"
+                onClick={() => onSelect(stamp)}
+                className="flex h-14 w-14 touch-manipulation items-center justify-center transition-transform select-none hover:bg-black/5 active:scale-90"
               >
                 <StampGlyph stamp={stamp} small />
               </button>
