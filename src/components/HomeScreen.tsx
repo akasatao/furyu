@@ -313,7 +313,12 @@ export function HomeScreen({
     onModeChange(next);
     setThemeDraft("");
     onThemeChange?.("");
-    void goToStep("theme");
+    // 俳句・短歌は人数、リレーは流派を先に選び、お題は最後
+    if (modeAllowsSolo(next)) {
+      void goToStep("setup");
+      return;
+    }
+    void goToStep("style");
   };
 
   const handleBackToMode = () => {
@@ -321,6 +326,15 @@ export function HomeScreen({
     setThemeDraft("");
     onThemeChange?.("");
     void goToStep("mode");
+  };
+
+  const handleBackFromTheme = () => {
+    setPressedChoice(null);
+    if (modeAllowsSolo(mode)) {
+      void goToStep("setup");
+      return;
+    }
+    void goToStep("style");
   };
 
   const pickRandomTheme = () => {
@@ -341,12 +355,13 @@ export function HomeScreen({
     const next = themeDraft.trim().slice(0, THEME_MAX_LENGTH);
     setThemeDraft(next);
     onThemeChange?.(next);
-    if (modeAllowsSolo(mode)) {
-      void goToStep("setup");
+    if (mode === "shirazu") {
+      const max = PLAYER_COUNT_RANGE[mode].max;
+      onPlayerCountChange(max);
+      void onCreateRoom(max, mode, next, shirazuStyle);
       return;
     }
-    // リレーはお題のあと流派を選ぶ
-    void goToStep("style");
+    void onCreateRoom(playerCount, mode, next);
   };
 
   const handleSelectShirazuStyle = (style: ShirazuStyle) => {
@@ -354,7 +369,7 @@ export function HomeScreen({
     onShirazuStyleChange?.(style);
     const max = PLAYER_COUNT_RANGE[mode].max;
     onPlayerCountChange(max);
-    void onCreateRoom(max, mode, themeDraft.trim().slice(0, THEME_MAX_LENGTH), style);
+    void goToStep("theme");
   };
 
   const pressChoice = (
@@ -371,14 +386,14 @@ export function HomeScreen({
   const handleSolo = () => {
     if (isLocked) return;
     onPlayerCountChange(1);
-    void onCreateRoom(1);
+    void goToStep("theme");
   };
 
   const handleMulti = () => {
     if (isLocked) return;
     const max = PLAYER_COUNT_RANGE[mode].max;
     onPlayerCountChange(max);
-    void onCreateRoom(max);
+    void goToStep("theme");
   };
 
   const modeGap = inputFocused
@@ -685,7 +700,7 @@ export function HomeScreen({
               </button>
             )}
           </>
-        ) : step === "theme" ? (
+        ) : step === "style" ? (
           <section className="flex w-full flex-col gap-5">
             <div className="flex items-center justify-between gap-2 px-1">
               <button
@@ -698,6 +713,54 @@ export function HomeScreen({
               </button>
               <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
                 {MODE_LABEL[mode]}
+              </p>
+              <span className="w-12" aria-hidden />
+            </div>
+
+            <div className="flex flex-col items-center gap-5 px-1 py-2 md:gap-6">
+              <header className="text-center">
+                <h2 className="text-3xl tracking-[0.35em] md:text-5xl">
+                  どう詠む？
+                </h2>
+              </header>
+
+              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
+                {SHIRAZU_STYLES.map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => handleSelectShirazuStyle(style)}
+                    onPointerDown={() => pressChoice(style)}
+                    onPointerUp={releaseChoice}
+                    onPointerCancel={releaseChoice}
+                    onPointerLeave={releaseChoice}
+                    aria-pressed={pressedChoice === style}
+                    className={`brush-btn-outline w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl ${
+                      pressedChoice === style ? "is-pressed" : ""
+                    } ${shirazuStyle === style ? "bg-black text-white" : ""}`}
+                  >
+                    {SHIRAZU_STYLE_LABEL[style]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : step === "theme" ? (
+          <section className="flex w-full flex-col gap-5">
+            <div className="flex items-center justify-between gap-2 px-1">
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={handleBackFromTheme}
+                className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+              >
+                ← 戻る
+              </button>
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
+                {mode === "shirazu"
+                  ? SHIRAZU_STYLE_LABEL[shirazuStyle]
+                  : MODE_LABEL[mode]}
               </p>
               <span className="w-12" aria-hidden />
             </div>
@@ -743,59 +806,6 @@ export function HomeScreen({
               </div>
             </div>
           </section>
-        ) : step === "style" ? (
-          <section className="flex w-full flex-col gap-5">
-            <div className="flex items-center justify-between gap-2 px-1">
-              <button
-                type="button"
-                disabled={isLocked}
-                onClick={() => {
-                  void goToStep("theme");
-                }}
-                className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
-              >
-                ← 戻る
-              </button>
-              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
-                {MODE_LABEL[mode]}
-              </p>
-              <span className="w-12" aria-hidden />
-            </div>
-
-            <div className="flex flex-col items-center gap-5 px-1 py-2 md:gap-6">
-              <header className="text-center">
-                <h2 className="text-3xl tracking-[0.35em] md:text-5xl">
-                  どう詠む？
-                </h2>
-                {themeDraft.trim() ? (
-                  <p className="mt-2 text-sm tracking-[0.2em] text-black/55 md:text-base">
-                    お題：{themeDraft.trim()}
-                  </p>
-                ) : null}
-              </header>
-
-              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
-                {SHIRAZU_STYLES.map((style) => (
-                  <button
-                    key={style}
-                    type="button"
-                    disabled={isLocked}
-                    onClick={() => handleSelectShirazuStyle(style)}
-                    onPointerDown={() => pressChoice(style)}
-                    onPointerUp={releaseChoice}
-                    onPointerCancel={releaseChoice}
-                    onPointerLeave={releaseChoice}
-                    aria-pressed={pressedChoice === style}
-                    className={`brush-btn-outline w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl ${
-                      pressedChoice === style ? "is-pressed" : ""
-                    } ${shirazuStyle === style ? "bg-black text-white" : ""}`}
-                  >
-                    {SHIRAZU_STYLE_LABEL[style]}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
         ) : (
           /* 一人／複数の確認画面（俳句・短歌） */
           <section className="flex w-full flex-col gap-5">
@@ -803,9 +813,7 @@ export function HomeScreen({
               <button
                 type="button"
                 disabled={isLocked}
-                onClick={() => {
-                  void goToStep("theme");
-                }}
+                onClick={handleBackToMode}
                 className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
               >
                 ← 戻る

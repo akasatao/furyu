@@ -43,23 +43,21 @@ export function ShirazuLineSlots({
   }
 
   return (
-    <span className={className}>
+    <span
+      className={`inline-flex flex-col items-center gap-[0.2em] [writing-mode:horizontal-tb] ${className}`}
+    >
       {slots.map((unit, i) => {
         const empty = unit === "〇";
         return (
           <span
             key={i}
-            className="inline-flex h-[1.05em] w-[1.05em] items-center justify-center align-middle"
+            className="relative box-border block h-[1.35em] w-[1.35em] shrink-0 overflow-hidden"
           >
             <FitSlot
               text={unit}
               empty={empty}
-              minFontPx={5}
-              className={
-                empty && dimEmpty
-                  ? "text-black/30 [writing-mode:vertical-rl]"
-                  : "text-black [writing-mode:vertical-rl]"
-              }
+              minFontPx={9}
+              className={empty && dimEmpty ? "text-black/35" : "text-black"}
             />
           </span>
         );

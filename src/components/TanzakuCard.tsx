@@ -81,13 +81,22 @@ export function TanzakuCard({
         {showText ? (
           <p
             key="writing"
-            className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
+            className={
+              free
+                ? "text-[1.35rem] leading-none tracking-normal [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
+                : "text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
+            }
             lang="ja"
           >
             {poem.lines.map((line, i) => {
               const isLast = i === poem.lines.length - 1;
-              const offset =
-                i === 0
+              const offset = free
+                ? i === 0
+                  ? ""
+                  : isLast
+                    ? "mt-10 mr-6 md:mt-[clamp(1.5rem,4dvh,3.5rem)] md:mr-7"
+                    : "mt-4 mr-5 md:mt-[clamp(0.75rem,2dvh,1.5rem)] md:mr-6"
+                : i === 0
                   ? ""
                   : isLast
                     ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
@@ -123,13 +132,22 @@ export function TanzakuCard({
         ) : showShirazuSlots ? (
           <p
             key="slots"
-            className="text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
+            className={
+              free
+                ? "text-[1.35rem] leading-none tracking-normal text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
+                : "text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
+            }
             lang="ja"
           >
             {PART_TARGETS.shirazu.map((target, i) => {
               const isLast = i === PART_TARGETS.shirazu.length - 1;
-              const offset =
-                i === 0
+              const offset = free
+                ? i === 0
+                  ? ""
+                  : isLast
+                    ? "mt-10 mr-6 md:mt-[clamp(1.5rem,4dvh,3.5rem)] md:mr-7"
+                    : "mt-4 mr-5 md:mt-[clamp(0.75rem,2dvh,1.5rem)] md:mr-6"
+                : i === 0
                   ? ""
                   : isLast
                     ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"

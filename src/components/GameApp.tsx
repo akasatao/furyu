@@ -12,7 +12,7 @@ import { SpectatePhase } from "@/components/SpectatePhase";
 import { WaitingLobby } from "@/components/WaitingLobby";
 import { WritingPhase } from "@/components/WritingPhase";
 import { APP_VERSION } from "@/lib/app-version";
-import { modeAllowsSolo, THEME_MAX_LENGTH } from "@/lib/constants";
+import { THEME_MAX_LENGTH } from "@/lib/constants";
 import { loadNickname, saveNickname } from "@/lib/online/nickname";
 import { getOrCreatePlayerId } from "@/lib/online/player-id";
 import { clearRevealSeen } from "@/lib/reveal-progress";
@@ -621,8 +621,8 @@ export function GameApp() {
     if (themeOverride !== undefined) setTheme(activeTheme);
     if (activeMode === "shirazu") setShirazuStyle(activeStyle);
     setPlayerCount(maxPlayers);
-    // ソロ可モードの複数人は「どう詠む？」へ。リレーは流派選択へ
-    lobbyBackStepRef.current = modeAllowsSolo(activeMode) ? "setup" : "style";
+    // 部屋作成直前はお題画面。戻ると人数／流派選択へ戻れる
+    lobbyBackStepRef.current = "theme";
     // 一人はローカルですぐ詠み始める（部屋作成の待ち時間なし）
     if (maxPlayers === 1) {
       setBusy(true);

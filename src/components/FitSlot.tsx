@@ -12,53 +12,81 @@ interface FitSlotProps {
 }
 
 /**
- * 縦書きの1枠に文字列を詰め、入りきらなければ font-size を下げる。
- * 雅号の FitText と同系統（親の幅・高さに収める）。
+ * 1枠に文字列を左斜め上→右斜め下へ並べ、入りきらなければ font-size を下げる。
+ * 親は横書きの正方形セルを想定。
  */
 export function FitSlot({
   text,
   className = "",
-  minFontPx = 6,
+  minFontPx = 8,
   empty = false,
 }: FitSlotProps) {
   const ref = useRef<HTMLSpanElement>(null);
+  const chars = [...text];
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || empty) return;
 
     const fit = () => {
-      const parent = el.parentElement;
-      if (!parent) return;
-      el.style.fontSize = "";
-      const base = parseFloat(getComputedStyle(el).fontSize);
-      if (!Number.isFinite(base) || base <= 0) return;
-      let size = base;
-      el.style.fontSize = `${size}px`;
-      const width = parent.clientWidth;
-      const height = parent.clientHeight;
+      const width = el.clientWidth;
+      const height = el.clientHeight;
       if (width <= 0 || height <= 0) return;
-      while (
-        size > minFontPx &&
-        (el.scrollWidth > width + 0.5 || el.scrollHeight > height + 0.5)
-      ) {
-        size -= 0.5;
-        el.style.fontSize = `${size}px`;
-      }
+
+      const n = Math.max(chars.length, 1);
+      const cell = Math.min(width, height);
+      const inset = n === 1 ? 0.5 : 0.12;
+      const usable = cell * Math.SQRT2 * (n === 1 ? 1 : 1 - inset * 2);
+      // 文字同士が軽く触れ合う程度まで大きく取る
+      const spaced =
+        n === 1
+          ? cell * 0.82
+          : usable / Math.max(1, (n - 1) * 0.78);
+      const size = Math.max(minFontPx, Math.min(cell * 0.85, spaced));
+      el.style.fontSize = `${size}px`;
     };
 
     fit();
     const ro = new ResizeObserver(() => fit());
-    if (el.parentElement) ro.observe(el.parentElement);
+    ro.observe(el);
     return () => ro.disconnect();
-  }, [text, minFontPx, empty]);
+  }, [text, minFontPx, empty, chars.length]);
+
+  if (empty || chars.length === 0) {
+    return (
+      <span
+        ref={ref}
+        className={`flex h-full w-full items-center justify-center overflow-hidden text-[1.05em] leading-none [writing-mode:horizontal-tb] ${className}`}
+      >
+        {text || "〇"}
+      </span>
+    );
+  }
+
+  const last = Math.max(chars.length - 1, 1);
+  const inset = chars.length === 1 ? 0.5 : 0.12;
 
   return (
     <span
       ref={ref}
-      className={`inline-flex max-h-full max-w-full items-center justify-center overflow-hidden text-center leading-tight ${className}`}
+      className={`relative block h-full w-full overflow-hidden leading-none [writing-mode:horizontal-tb] ${className}`}
     >
-      {text}
+      {chars.map((ch, i) => {
+        const t =
+          chars.length === 1 ? inset : inset + (i / last) * (1 - inset * 2);
+        return (
+          <span
+            key={`${i}-${ch}`}
+            className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap"
+            style={{
+              left: `${t * 100}%`,
+              top: `${t * 100}%`,
+            }}
+          >
+            {ch}
+          </span>
+        );
+      })}
     </span>
   );
 }

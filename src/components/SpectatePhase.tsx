@@ -30,11 +30,17 @@ function ShirazuGallery({
   free: boolean;
 }) {
   const dense = poems.length >= 5;
-  const textClass = dense
-    ? "text-[0.72rem] leading-[1.45] tracking-[0.08em]"
-    : poems.length >= 4
-      ? "text-[0.85rem] leading-[1.55] tracking-[0.12em] md:text-base"
-      : "text-[1.05rem] leading-[1.75] tracking-[0.16em] md:text-[1.35rem] md:tracking-[0.22em]";
+  const textClass = free
+    ? dense
+      ? "text-[0.8rem] leading-none tracking-normal"
+      : poems.length >= 4
+        ? "text-[0.95rem] leading-none tracking-normal md:text-base"
+        : "text-[1.15rem] leading-none tracking-normal md:text-[1.35rem]"
+    : dense
+      ? "text-[0.72rem] leading-[1.45] tracking-[0.08em]"
+      : poems.length >= 4
+        ? "text-[0.85rem] leading-[1.55] tracking-[0.12em] md:text-base"
+        : "text-[1.05rem] leading-[1.75] tracking-[0.16em] md:text-[1.35rem] md:tracking-[0.22em]";
 
   return (
     <div
@@ -55,7 +61,17 @@ function ShirazuGallery({
                 {SHIRAZU_LINE_TARGETS.map((target, i) => (
                   <span
                     key={i}
-                    className={`${i === 0 ? "" : i === 2 ? "mt-6 md:mt-8" : "mt-2 md:mt-3"} block`}
+                    className={`${
+                      i === 0
+                        ? ""
+                        : poemFree
+                          ? i === 2
+                            ? "mt-6 mr-3 md:mt-8 md:mr-4"
+                            : "mt-2 mr-2.5 md:mt-3 md:mr-3"
+                          : i === 2
+                            ? "mt-6 md:mt-8"
+                            : "mt-2 md:mt-3"
+                    } block`}
                   >
                     <ShirazuLineSlots
                       line={poem.lines[i]}

@@ -253,25 +253,42 @@ export function ShirazuWritingPhase({
           >
             <p
               className={`[writing-mode:vertical-rl] ${
-                compact
-                  ? "text-[0.85rem] leading-[1.55] tracking-[0.2em]"
-                  : "text-[1.35rem] leading-[2] tracking-[0.35em] md:text-[clamp(1.2rem,2.8dvh,1.6rem)]"
+                free
+                  ? compact
+                    ? "text-[0.95rem] leading-none tracking-normal"
+                    : "text-[1.35rem] leading-none tracking-normal md:text-[clamp(1.25rem,3dvh,1.6rem)]"
+                  : compact
+                    ? "text-[0.85rem] leading-[1.55] tracking-[0.2em]"
+                    : "text-[1.35rem] leading-[2] tracking-[0.35em] md:text-[clamp(1.2rem,2.8dvh,1.6rem)]"
               }`}
               lang="ja"
             >
               {SHIRAZU_LINE_TARGETS.map((target, i) => {
                 const isLast = i === SHIRAZU_LINE_TARGETS.length - 1;
-                const offset = compact
-                  ? i === 0
-                    ? ""
-                    : isLast
-                      ? "mt-3"
-                      : "mt-1.5"
-                  : i === 0
-                    ? ""
-                    : isLast
-                      ? "mt-10"
-                      : "mt-4";
+                // 自由律は縦列のあいだを広めに（縦書きの列間隔＝mr）
+                const offset = free
+                  ? compact
+                    ? i === 0
+                      ? ""
+                      : isLast
+                        ? "mt-3 mr-3"
+                        : "mt-1.5 mr-2.5"
+                    : i === 0
+                      ? ""
+                      : isLast
+                        ? "mt-10 mr-6"
+                        : "mt-4 mr-5"
+                  : compact
+                    ? i === 0
+                      ? ""
+                      : isLast
+                        ? "mt-3"
+                        : "mt-1.5"
+                    : i === 0
+                      ? ""
+                      : isLast
+                        ? "mt-10"
+                        : "mt-4";
                 return (
                   <span
                     key={LINE_NAMES[i] ?? i}
