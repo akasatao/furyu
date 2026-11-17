@@ -15,10 +15,11 @@ import {
   historyEntryToPoem,
   type PoemHistoryEntry,
 } from "@/lib/online/poem-history";
-import { normalizeRoomCode, shirazuOwnerLabel, toKanji } from "@/lib/utils";
+import { OpenRoomList } from "@/components/OpenRoomList";
+import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
 import type { VerseMode } from "@/types/game";
 
-export type HomeStep = "mode" | "theme" | "setup" | "history";
+export type HomeStep = "mode" | "theme" | "setup" | "history" | "rooms";
 
 interface HomeScreenProps {
   nickname: string;
@@ -36,7 +37,7 @@ interface HomeScreenProps {
     verseMode?: VerseMode,
     theme?: string,
   ) => void | Promise<void>;
-  onJoinRoom: (code: string) => void;
+  onJoinRoom: (roomId: string) => void;
   /** ロビーから戻ったときの初期画面 */
   initialStep?: HomeStep;
   busy?: boolean;
@@ -89,10 +90,6 @@ export function HomeScreen({
   const [step, setStep] = useState<HomeStep>(initialStep);
   const [veil, setVeil] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
-  const [joinCode, setJoinCode] = useState("");
-  const [joinError, setJoinError] = useState("");
-  /** 日本語IME変換中は正規化しない（英数入力の二重化・崩れ防止） */
-  const [joinComposing, setJoinComposing] = useState(false);
   const [themeDraft, setThemeDraft] = useState(theme);
   const [pressedChoice, setPressedChoice] = useState<
     "solo" | "multi" | "join" | VerseMode | null
@@ -101,7 +98,6 @@ export function HomeScreen({
   const [inputFocused, setInputFocused] = useState(false);
   const lockedRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const joinInputRef = useRef<HTMLInputElement>(null);
   const nicknameInputRef = useRef<HTMLInputElement>(null);
   const themeInputRef = useRef<HTMLInputElement>(null);
   const blurTimerRef = useRef<number | null>(null);
@@ -116,17 +112,14 @@ export function HomeScreen({
     }
     setInputFocused(false);
     const active = document.activeElement;
-    if (
-      active === joinInputRef.current ||
-      active === nicknameInputRef.current
-    ) {
+    if (active === nicknameInputRef.current) {
       (active as HTMLElement).blur();
     }
     rootRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
     window.scrollTo({ top: 0, left: 0 });
   }, []);
 
-  const handleInputFocus = (scrollJoin = false) => {
+  const handleInputFocus = () => {
     if (blurTimerRef.current != null) {
       window.clearTimeout(blurTimerRef.current);
       blurTimerRef.current = null;
@@ -134,23 +127,11 @@ export function HomeScreen({
     setInputFocused(true);
     const vv = window.visualViewport;
     if (vv) viewportHeightRef.current = vv.height;
-    if (!scrollJoin) return;
-    window.requestAnimationFrame(() => {
-      joinInputRef.current?.scrollIntoView({
-        block: "nearest",
-        behavior: "smooth",
-      });
-    });
   };
 
   const handleInputBlur = () => {
-    // 雅号↔ルームコード切替では入力モードを維持
     blurTimerRef.current = window.setTimeout(() => {
-      const active = document.activeElement;
-      const stillEditing =
-        active === joinInputRef.current ||
-        active === nicknameInputRef.current;
-      if (!stillEditing) endInputMode();
+      if (document.activeElement !== nicknameInputRef.current) endInputMode();
     }, 120);
   };
 
@@ -290,16 +271,6 @@ export function HomeScreen({
     void onCreateRoom(max);
   };
 
-  const handleJoin = () => {
-    const code = normalizeRoomCode(joinCode);
-    if (code.length < 4) {
-      setJoinError("ルームコードを4文字入力してください");
-      return;
-    }
-    setJoinError("");
-    onJoinRoom(code);
-  };
-
   const modeGap = inputFocused
     ? "gap-2 pb-4 md:gap-3"
     : "gap-3 md:gap-4";
@@ -309,7 +280,21 @@ export function HomeScreen({
       ref={rootRef}
       className="relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-hidden overflow-x-hidden bg-white md:max-w-2xl"
     >
-      {step === "history" ? (
+      {step === "rooms" ? (
+        <div
+          className={`flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-1 pb-4 pt-2 ${
+            transitioning ? "pointer-events-none" : ""
+          }`}
+        >
+          <OpenRoomList
+            busy={isLocked}
+            onBack={() => {
+              void goToStep("mode");
+            }}
+            onJoin={onJoinRoom}
+          />
+        </div>
+      ) : step === "history" ? (
         <div
           className={`flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-4 ${
             transitioning ? "pointer-events-none" : ""
@@ -412,7 +397,7 @@ export function HomeScreen({
                   placeholder="名無しの俳人"
                   enterKeyHint="done"
                   autoComplete="nickname"
-                  onFocus={() => handleInputFocus(false)}
+                  onFocus={handleInputFocus}
                   onBlur={handleInputBlur}
                   onChange={(e) => onNicknameChange(e.target.value)}
                   className="brush-input w-full px-4 py-2.5 text-base md:py-3.5 md:text-lg"
@@ -448,66 +433,24 @@ export function HomeScreen({
               </div>
             </section>
 
-            <div className="brush-box shrink-0 p-3 md:p-[clamp(0.75rem,2dvh,1rem)]">
-              <p className="mb-2 text-sm tracking-widest text-black/70">
-                ルームコードで入る
-              </p>
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!isLocked) handleJoin();
-                }}
-              >
-                <input
-                  ref={joinInputRef}
-                  type="text"
-                  value={joinCode}
-                  maxLength={joinComposing ? 12 : 6}
-                  placeholder="A1B2"
-                  enterKeyHint="go"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  lang="en"
-                  inputMode="text"
-                  onFocus={() => handleInputFocus(true)}
-                  onBlur={handleInputBlur}
-                  onCompositionStart={() => setJoinComposing(true)}
-                  onCompositionEnd={(e) => {
-                    setJoinComposing(false);
-                    setJoinCode(normalizeRoomCode(e.currentTarget.value));
-                  }}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    const native = e.nativeEvent as InputEvent;
-                    if (joinComposing || native.isComposing) {
-                      setJoinCode(value);
-                      return;
-                    }
-                    setJoinCode(normalizeRoomCode(value));
-                  }}
-                  className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em] md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-lg"
-                />
-                <button
-                  type="submit"
-                  disabled={isLocked}
-                  onPointerDown={() => pressChoice("join")}
-                  onPointerUp={releaseChoice}
-                  onPointerCancel={releaseChoice}
-                  onPointerLeave={releaseChoice}
-                  aria-pressed={pressedChoice === "join"}
-                  className={`brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest md:px-5 md:py-[clamp(0.5rem,1.8dvh,0.875rem)] md:text-base ${
-                    pressedChoice === "join" ? "is-pressed" : ""
-                  }`}
-                >
-                  入室
-                </button>
-              </form>
-              {joinError && (
-                <p className="mt-2 text-xs underline">{joinError}</p>
-              )}
-            </div>
+            <button
+              type="button"
+              disabled={isLocked}
+              onClick={() => {
+                releaseChoice();
+                void goToStep("rooms");
+              }}
+              onPointerDown={() => pressChoice("join")}
+              onPointerUp={releaseChoice}
+              onPointerCancel={releaseChoice}
+              onPointerLeave={releaseChoice}
+              aria-pressed={pressedChoice === "join"}
+              className={`brush-btn w-full shrink-0 tracking-[0.35em] md:py-5 md:text-2xl ${
+                inputFocused ? "px-4 py-2.5 text-base" : "px-4 py-3.5 text-lg"
+              } ${pressedChoice === "join" ? "is-pressed" : ""}`}
+            >
+              和室に参加する
+            </button>
 
             {poemHistory.length > 0 && (
               <button
@@ -540,11 +483,8 @@ export function HomeScreen({
             </div>
 
             <div className="flex flex-col items-center gap-5 px-1 py-2 md:gap-6">
-              <header className="space-y-1 text-center">
+              <header className="text-center">
                 <h2 className="text-3xl tracking-[0.35em] md:text-5xl">お題</h2>
-                <p className="text-sm tracking-widest text-black/45">
-                  空欄のまま進んでも構いません
-                </p>
               </header>
 
               <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
@@ -553,9 +493,9 @@ export function HomeScreen({
                   type="text"
                   value={themeDraft}
                   maxLength={THEME_MAX_LENGTH}
-                  placeholder="例：春の雨"
+                  placeholder=""
                   enterKeyHint="done"
-                  onFocus={() => handleInputFocus(false)}
+                  onFocus={handleInputFocus}
                   onBlur={handleInputBlur}
                   onChange={(e) => setThemeDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -578,7 +518,7 @@ export function HomeScreen({
                   onClick={handleConfirmTheme}
                   className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl"
                 >
-                  このお題で進む
+                  {themeDraft.trim() ? "このお題で進む" : "お題なしで進む"}
                 </button>
               </div>
             </div>

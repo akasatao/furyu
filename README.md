@@ -18,7 +18,7 @@ Next.js (App Router) + TypeScript + Tailwind CSS による、連作の川柳／�
 2. Supabase SQL Editor で [`supabase/schema.sql`](supabase/schema.sql) を実行する
 3. Realtime が `rooms` / `room_players` に有効か確認する
 
-部屋を作った人のルームコードを共有すると、別端末から入れます。
+誰かが「みんなで詠む」や「リレーで風流」で部屋を作ると、別端末のホーム画面の「和室に参加する」に開いている和室が一覧で表示され、選ぶだけで入れます。
 
 ## 起動
 

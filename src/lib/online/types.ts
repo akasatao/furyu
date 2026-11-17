@@ -27,6 +27,17 @@ export interface RoomPlayerRow {
   created_at: string;
 }
 
+/** 和室一覧に並べる待機中の部屋 */
+export interface OpenRoomSummary {
+  id: string;
+  mode: VerseMode;
+  theme: string;
+  hostName: string;
+  playerCount: number;
+  maxPlayers: number;
+  createdAt: string;
+}
+
 export interface OnlineRoomSnapshot {
   room: RoomRow;
   players: Player[];

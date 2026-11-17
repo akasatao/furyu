@@ -5,7 +5,6 @@ import { getSupabase } from "@/lib/supabase/client";
 import {
   assignShirazuOwners,
   createBlankPoems,
-  normalizeRoomCode,
   playerColor,
   randomRoomCode,
   uid,
@@ -26,6 +25,7 @@ import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
 import {
   rowToPlayer,
   type OnlineRoomSnapshot,
+  type OpenRoomSummary,
   type RoomPlayerRow,
   type RoomRow,
 } from "@/lib/online/types";
@@ -117,21 +117,109 @@ export async function createOnlineRoom(options: {
   return loadRoomSnapshot(room.id);
 }
 
+/** 放置された部屋を一覧に出さないための上限 */
+const OPEN_ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+type OpenRoomRow = Pick<
+  RoomRow,
+  "id" | "mode" | "max_players" | "theme" | "created_at"
+> & {
+  room_players: Pick<RoomPlayerRow, "name" | "is_host">[] | null;
+};
+
+export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
+  const supabase = getSupabase();
+  const since = new Date(Date.now() - OPEN_ROOM_MAX_AGE_MS).toISOString();
+  const { data, error } = await supabase
+    .from("rooms")
+    .select("id, mode, max_players, theme, created_at, room_players(name, is_host)")
+    .eq("phase", "lobby")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  return ((data ?? []) as unknown as OpenRoomRow[])
+    .map((row) => {
+      const members = row.room_players ?? [];
+      const host = members.find((p) => p.is_host);
+      return {
+        id: row.id,
+        mode: row.mode,
+        theme: typeof row.theme === "string" ? row.theme : "",
+        hostName: host?.name ?? "",
+        playerCount: members.length,
+        maxPlayers: row.max_players,
+        createdAt: row.created_at,
+      };
+    })
+    .filter(
+      (room) =>
+        room.hostName !== "" &&
+        room.playerCount > 0 &&
+        room.playerCount < room.maxPlayers,
+    );
+}
+
+export function subscribeOpenRooms(
+  onChange: (rooms: OpenRoomSummary[]) => void,
+  onError?: (error: Error) => void,
+): RoomSubscription {
+  const supabase = getSupabase();
+  let alive = true;
+
+  const refresh = async () => {
+    try {
+      const rooms = await listOpenRooms();
+      if (alive) onChange(rooms);
+    } catch (error) {
+      if (alive) onError?.(error as Error);
+    }
+  };
+
+  const channel = supabase
+    .channel(`open-rooms-${uid("ch")}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "rooms" },
+      () => {
+        void refresh();
+      },
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "room_players" },
+      () => {
+        void refresh();
+      },
+    )
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") void refresh();
+    });
+
+  void refresh();
+
+  return {
+    unsubscribe: () => {
+      alive = false;
+      void supabase.removeChannel(channel);
+    },
+  };
+}
+
 export async function joinOnlineRoom(options: {
-  code: string;
+  roomId: string;
   playerId: string;
   nickname: string;
 }): Promise<OnlineRoomSnapshot> {
   const supabase = getSupabase();
-  const code = normalizeRoomCode(options.code);
 
   const { data: roomData, error: roomError } = await supabase
     .from("rooms")
     .select("*")
-    .eq("code", code)
+    .eq("id", options.roomId)
     .maybeSingle();
   if (roomError) throw roomError;
-  if (!roomData) throw new Error("そのルームコードの和室は見つかりません。");
+  if (!roomData) throw new Error("その和室はもう閉じられています。");
 
   const room = asRoom(roomData as RoomRow);
   if (room.phase !== "lobby") {

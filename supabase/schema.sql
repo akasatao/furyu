@@ -35,6 +35,8 @@ create table if not exists public.room_players (
 
 create index if not exists rooms_code_idx on public.rooms (code);
 create index if not exists room_players_room_id_idx on public.room_players (room_id);
+-- 和室一覧（待機中の部屋を新しい順に取得）
+create index if not exists rooms_phase_idx on public.rooms (phase, created_at desc);
 
 alter table public.rooms enable row level security;
 alter table public.room_players enable row level security;

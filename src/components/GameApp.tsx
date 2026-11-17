@@ -87,7 +87,6 @@ export function GameApp() {
   const [mode, setMode] = useState<VerseMode>("haiku");
   const [playerCount, setPlayerCount] = useState(2);
   const [roomId, setRoomId] = useState<string | null>(null);
-  const [roomCode, setRoomCode] = useState("");
   const [players, setPlayers] = useState<Player[]>([]);
   const [poems, setPoems] = useState<Poem[]>([]);
   const [turn, setTurn] = useState<TurnState | null>(null);
@@ -182,7 +181,6 @@ export function GameApp() {
   const applySnapshot = useCallback(
     (snapshot: OnlineRoomSnapshot) => {
       setRoomId(snapshot.room.id);
-      setRoomCode(snapshot.room.code);
       setMode(snapshot.room.mode);
       setPlayerCount(snapshot.room.max_players);
       setPlayers(snapshot.players);
@@ -332,7 +330,6 @@ export function GameApp() {
       setTheme(nextTheme);
       setPlayerCount(1);
       setRoomId(null);
-      setRoomCode("");
       setPlayers(roster);
       setPoems(createBlankPoems(verseMode, 1, uid("poem")));
       setTurn({
@@ -415,12 +412,12 @@ export function GameApp() {
     }
   };
 
-  const handleJoinRoom = async (code: string) => {
+  const handleJoinRoom = async (targetRoomId: string) => {
     if (!isSupabaseConfigured()) {
       setErrorMessage("Supabase の設定がありません。");
       return;
     }
-    lobbyBackStepRef.current = "mode";
+    lobbyBackStepRef.current = "rooms";
     setBusy(true);
     setErrorMessage("");
     try {
@@ -428,7 +425,7 @@ export function GameApp() {
       setMyId(playerId);
       // 失敗時はフェードなしでエラー表示
       const snapshot = await joinOnlineRoom({
-        code,
+        roomId: targetRoomId,
         playerId,
         nickname: displayName,
       });
@@ -472,7 +469,6 @@ export function GameApp() {
             setHomeStep(nextHomeStep);
             setPhase("home");
             setRoomId(null);
-            setRoomCode("");
             setPlayers([]);
             setPoems([]);
             setTurn(null);
@@ -855,8 +851,8 @@ export function GameApp() {
             onCreateRoom={(count, verseMode, nextTheme) =>
               handleCreateRoom(count, verseMode, nextTheme)
             }
-            onJoinRoom={(code) => {
-              void handleJoinRoom(code);
+            onJoinRoom={(id) => {
+              void handleJoinRoom(id);
             }}
             initialStep={homeStep}
             busy={busy}
@@ -866,7 +862,6 @@ export function GameApp() {
         {phase === "lobby" && (
           <ViewportFit>
             <WaitingLobby
-              roomCode={roomCode}
               mode={mode}
               theme={theme}
               players={players}

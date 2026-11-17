@@ -5,7 +5,6 @@ import { toKanji } from "@/lib/utils";
 import type { Player, VerseMode } from "@/types/game";
 
 interface WaitingLobbyProps {
-  roomCode: string;
   mode: VerseMode;
   theme?: string;
   players: Player[];
@@ -21,7 +20,6 @@ interface WaitingLobbyProps {
 }
 
 export function WaitingLobby({
-  roomCode,
   mode,
   theme = "",
   players,
@@ -33,6 +31,8 @@ export function WaitingLobby({
   onBack,
   onLeave,
 }: WaitingLobbyProps) {
+  const hostName = players.find((p) => p.isHost)?.name;
+
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 md:max-w-xl md:gap-5">
       <div className="flex shrink-0 items-center justify-between gap-2 px-1">
@@ -50,7 +50,7 @@ export function WaitingLobby({
 
       <header className="shrink-0 space-y-1.5 text-center">
         <h2 className="text-2xl tracking-widest md:text-4xl">
-          和室 {roomCode}
+          {hostName ? `${hostName}の和室` : "和室"}
         </h2>
         <p className="text-sm tracking-wider text-black/55">
           {MODE_LABEL[mode]}・{toKanji(players.length)}／{toKanji(maxPlayers)}人
