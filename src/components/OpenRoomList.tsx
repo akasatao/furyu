@@ -124,8 +124,11 @@ export function OpenRoomList({
                       onPointerUp={() => setPressedKey(null)}
                       onPointerCancel={() => setPressedKey(null)}
                       onPointerLeave={() => setPressedKey(null)}
-                      onClick={() => onSpectate(room.id)}
-                      className={`brush-btn min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em]${
+                      onClick={() => {
+                        if (busy) return;
+                        onSpectate(room.id);
+                      }}
+                      className={`brush-btn min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em] disabled:!opacity-100${
                         pressedKey === watchKey ? " is-pressed" : ""
                       }`}
                     >
@@ -138,8 +141,11 @@ export function OpenRoomList({
                       onPointerUp={() => setPressedKey(null)}
                       onPointerCancel={() => setPressedKey(null)}
                       onPointerLeave={() => setPressedKey(null)}
-                      onClick={() => onJoin(room.id)}
-                      className={`brush-btn-outline min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em]${
+                      onClick={() => {
+                        if (busy) return;
+                        onJoin(room.id);
+                      }}
+                      className={`brush-btn-outline min-h-14 px-2 py-4 text-base tracking-[0.12em] whitespace-nowrap md:min-h-16 md:text-lg md:tracking-[0.2em] disabled:!opacity-100${
                         pressedKey === enterKey ? " is-pressed" : ""
                       }`}
                     >
@@ -154,8 +160,11 @@ export function OpenRoomList({
                     onPointerUp={() => setPressedKey(null)}
                     onPointerCancel={() => setPressedKey(null)}
                     onPointerLeave={() => setPressedKey(null)}
-                    onClick={() => onSpectate(room.id)}
-                    className={`brush-btn min-h-20 w-full px-4 py-5 text-xl tracking-[0.2em] md:min-h-24 md:text-2xl md:tracking-[0.28em]${
+                    onClick={() => {
+                      if (busy) return;
+                      onSpectate(room.id);
+                    }}
+                    className={`brush-btn min-h-20 w-full px-4 py-5 text-xl tracking-[0.2em] md:min-h-24 md:text-2xl md:tracking-[0.28em] disabled:!opacity-100${
                       pressedKey === watchKey ? " is-pressed" : ""
                     }`}
                   >

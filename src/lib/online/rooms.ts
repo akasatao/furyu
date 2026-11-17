@@ -593,6 +593,16 @@ export async function kickOnlinePlayer(options: {
   if (options.targetId === options.hostId) {
     throw new Error("亭主は自分を破門できません。");
   }
+
+  const isSpectator = snapshot.spectators.some(
+    (p) => p.id === options.targetId,
+  );
+  if (isSpectator) {
+    // 観戦は進行に入っていないので、行を消すだけでよい
+    await deletePlayerRow(options.roomId, options.targetId);
+    return loadRoomSnapshot(options.roomId);
+  }
+
   if (!snapshot.players.some((p) => p.id === options.targetId)) {
     return snapshot;
   }

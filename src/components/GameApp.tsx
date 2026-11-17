@@ -1031,6 +1031,7 @@ export function GameApp() {
               mode={mode}
               theme={theme}
               players={players}
+              spectators={spectators}
               myId={myId}
               maxPlayers={playerCount}
               isHost={Boolean(me?.isHost)}
@@ -1130,6 +1131,7 @@ export function GameApp() {
         {phase === "writing" && !watching && roomId && me?.isHost && (
           <KickMenu
             players={players}
+            spectators={spectators}
             myId={myId}
             busy={busy}
             onKick={(id) => {

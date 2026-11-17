@@ -5,6 +5,7 @@ import type { Player } from "@/types/game";
 
 interface KickMenuProps {
   players: Player[];
+  spectators?: Player[];
   myId: string;
   busy?: boolean;
   onKick: (playerId: string) => void;
@@ -12,16 +13,26 @@ interface KickMenuProps {
   onCloseRoom: () => void;
 }
 
-/** 執筆中、亭主だけが開ける連衆一覧（破門する） */
+type RosterEntry = { player: Player; watching: boolean };
+
+/** 執筆中、亭主だけが開ける連衆・観戦一覧（破門する） */
 export function KickMenu({
   players,
+  spectators = [],
   myId,
   busy = false,
   onKick,
   onCloseRoom,
 }: KickMenuProps) {
   const [open, setOpen] = useState(false);
-  const others = players.filter((p) => p.id !== myId);
+  const others: RosterEntry[] = [
+    ...players
+      .filter((p) => p.id !== myId)
+      .map((player) => ({ player, watching: false })),
+    ...spectators
+      .filter((p) => p.id !== myId)
+      .map((player) => ({ player, watching: true })),
+  ];
 
   return (
     <>
@@ -51,12 +62,19 @@ export function KickMenu({
               </p>
             ) : (
               <ul className="space-y-2">
-                {others.map((p) => (
+                {others.map(({ player: p, watching }) => (
                   <li
                     key={p.id}
                     className="flex items-center gap-3 border-2 border-black px-3 py-2"
                   >
-                    <p className="min-w-0 flex-1 truncate">{p.name}</p>
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <p className="min-w-0 truncate">{p.name}</p>
+                      {watching ? (
+                        <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
+                          観戦
+                        </span>
+                      ) : null}
+                    </div>
                     <button
                       type="button"
                       disabled={busy}

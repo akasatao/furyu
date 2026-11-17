@@ -8,6 +8,7 @@ interface WaitingLobbyProps {
   mode: VerseMode;
   theme?: string;
   players: Player[];
+  spectators?: Player[];
   myId: string;
   maxPlayers: number;
   isHost: boolean;
@@ -15,7 +16,7 @@ interface WaitingLobbyProps {
   watching?: boolean;
   busy?: boolean;
   onStart: () => void;
-  /** 亭主が連衆を破門する */
+  /** 亭主が連衆・観戦を破門する */
   onKick?: (playerId: string) => void;
   /** ひとつ前の画面へ（部屋は退出） */
   onBack: () => void;
@@ -27,6 +28,7 @@ export function WaitingLobby({
   mode,
   theme = "",
   players,
+  spectators = [],
   myId,
   maxPlayers,
   isHost,
@@ -89,6 +91,39 @@ export function WaitingLobby({
                     亭主
                   </span>
                 )}
+                {p.id === myId ? (
+                  <span className="shrink-0 text-xs text-black/45">（あなた）</span>
+                ) : null}
+              </div>
+              {isHost && onKick && p.id !== myId ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`${p.name}さんを破門にしますか？`)) {
+                      onKick(p.id);
+                    }
+                  }}
+                  className="shrink-0 border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+                >
+                  破門
+                </button>
+              ) : null}
+            </li>
+          ))}
+          {spectators.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-white text-sm text-black md:h-11 md:w-11 md:text-base">
+                {p.name.slice(0, 1)}
+              </span>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <p className="min-w-0 truncate md:text-lg">{p.name}</p>
+                <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
+                  観戦
+                </span>
                 {p.id === myId ? (
                   <span className="shrink-0 text-xs text-black/45">（あなた）</span>
                 ) : null}
