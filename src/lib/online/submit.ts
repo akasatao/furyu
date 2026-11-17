@@ -152,16 +152,25 @@ export function applyShirazuRoundSubmit(args: {
     : applyShirazuCharToPoem(poems, poemIndex, turn.roundIndex, draft);
 
   const submittedIds = [...turn.submittedIds, playerId];
+  const settled = settleShirazuRound(
+    updated,
+    { ...turn, submittedIds },
+    playerCount,
+  );
+  return { poems: updated, ...settled };
+}
 
-  if (submittedIds.length < playerCount) {
-    return {
-      poems: updated,
-      done: false,
-      nextTurn: { ...turn, submittedIds },
-    };
+/** 提出数が人数に達していれば次のラウンド（全部埋まっていれば披露）へ */
+export function settleShirazuRound(
+  poems: Poem[],
+  turn: ShirazuTurnState,
+  playerCount: number,
+): { done: boolean; nextTurn: TurnState } {
+  if (turn.submittedIds.length < playerCount) {
+    return { done: false, nextTurn: turn };
   }
 
-  const allComplete = updated.every(
+  const allComplete = poems.every(
     (poem) => poemMoraCount(poem) >= SHIRAZU_MORA_PER_POEM,
   );
   if (allComplete) {
@@ -169,11 +178,10 @@ export function applyShirazuRoundSubmit(args: {
       kind: "shirazu_reveal",
       poemIndex: -1,
     };
-    return { poems: updated, done: true, nextTurn: revealTurn };
+    return { done: true, nextTurn: revealTurn };
   }
 
   return {
-    poems: updated,
     done: false,
     nextTurn: {
       kind: "shirazu",

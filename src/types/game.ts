@@ -13,6 +13,8 @@ export interface Player {
   color: string;
   /** 担当する行インデックス（0始まり） */
   partIndexes: number[];
+  /** オンラインの座席。リレーでは途中で抜けても詰めない */
+  seat?: number;
 }
 
 export interface PoemLine {

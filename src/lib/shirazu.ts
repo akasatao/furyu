@@ -80,6 +80,16 @@ export function shirazuPoemForSeat(
   return ((seat - roundIndex) % n + n) % n;
 }
 
+/** 連衆の座席。座席番号が無ければ並び順で代用。見つからなければ -1 */
+export function shirazuSeatOf(
+  players: { id: string; seat?: number }[],
+  playerId: string,
+): number {
+  const index = players.findIndex((p) => p.id === playerId);
+  if (index < 0) return -1;
+  return players[index].seat ?? index;
+}
+
 /** ラウンド番号（0..16）→ 五・七・五のどの音か */
 export function locateShirazuMora(roundIndex: number): ShirazuMoraLocation {
   if (roundIndex < 0 || roundIndex >= SHIRAZU_MORA_PER_POEM) {

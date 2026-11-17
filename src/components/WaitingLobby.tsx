@@ -13,6 +13,8 @@ interface WaitingLobbyProps {
   isHost: boolean;
   busy?: boolean;
   onStart: () => void;
+  /** 亭主が連衆を退出させる */
+  onKick?: (playerId: string) => void;
   /** ひとつ前の画面へ（部屋は退出） */
   onBack: () => void;
   /** ホームのモード選択へ */
@@ -28,6 +30,7 @@ export function WaitingLobby({
   isHost,
   busy = false,
   onStart,
+  onKick,
   onBack,
   onLeave,
 }: WaitingLobbyProps) {
@@ -86,6 +89,20 @@ export function WaitingLobby({
                   <span className="shrink-0 text-xs text-black/45">（あなた）</span>
                 ) : null}
               </div>
+              {isHost && onKick && p.id !== myId ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`${p.name}さんを退出させますか？`)) {
+                      onKick(p.id);
+                    }
+                  }}
+                  className="shrink-0 border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+                >
+                  退出
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>

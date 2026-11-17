@@ -5,6 +5,7 @@ import { createPortal, flushSync } from "react-dom";
 import { BgmPlayer } from "@/components/BgmPlayer";
 import { ViewportFit } from "@/components/ViewportFit";
 import { HomeScreen, type HomeStep } from "@/components/HomeScreen";
+import { KickMenu } from "@/components/KickMenu";
 import { RevealPhase } from "@/components/RevealPhase";
 import { ShirazuWritingPhase } from "@/components/ShirazuWritingPhase";
 import { WaitingLobby } from "@/components/WaitingLobby";
@@ -22,6 +23,7 @@ import {
   advanceShirazuReveal,
   createOnlineRoom,
   joinOnlineRoom,
+  kickOnlinePlayer,
   leaveOnlineRoom,
   resetRoomToLobby,
   startOnlineGame,
@@ -37,6 +39,7 @@ import {
   poemMoraCount,
   SHIRAZU_MORA_PER_POEM,
   shirazuPoemForSeat,
+  shirazuSeatOf,
 } from "@/lib/shirazu";
 import {
   applyOnlineSubmit,
@@ -113,6 +116,17 @@ export function GameApp() {
   const historySavedKeyRef = useRef("");
   /** ロビーの「戻る」で戻すホーム画面 */
   const lobbyBackStepRef = useRef<HomeStep>("mode");
+  const phaseRef = useRef(phase);
+  const myIdRef = useRef(myId);
+  useEffect(() => {
+    phaseRef.current = phase;
+    myIdRef.current = myId;
+  }, [phase, myId]);
+  /** 亭主が抜けた／キックされたときの追い出し（二重実行防止） */
+  const ejectLockRef = useRef(false);
+  const ejectRef = useRef<(message: string, skipLeave?: boolean) => void>(
+    () => {},
+  );
 
   useEffect(() => {
     setMyId(getOrCreatePlayerId());
@@ -228,13 +242,32 @@ export function GameApp() {
       subRef.current = subscribeOnlineRoom(
         id,
         (snapshot) => {
+          const self = myIdRef.current;
+          if (self && !snapshot.players.some((p) => p.id === self)) {
+            ejectRef.current("亭主に退出させられました", true);
+            return;
+          }
+          // 待機中に亭主が抜けたら、他の連衆も自動で退出
+          if (
+            snapshot.room.phase === "lobby" &&
+            !snapshot.players.some((p) => p.isHost)
+          ) {
+            ejectRef.current("亭主が和室を閉じました");
+            return;
+          }
           applySnapshot(snapshot);
           // 自分がフェード中でなければ、披露開始をそのまま許可
           if (snapshot.room.phase === "reveal" && !fadingRef.current) {
             setRevealReady(true);
           }
         },
-        (error) => setErrorMessage(error.message),
+        (error) => {
+          if (phaseRef.current === "lobby") {
+            ejectRef.current("亭主が和室を閉じました");
+            return;
+          }
+          setErrorMessage(error.message);
+        },
       );
     },
     [applySnapshot, clearSubscription],
@@ -446,14 +479,17 @@ export function GameApp() {
     }
   };
 
-  const leaveRoomAndGoHome = async (nextHomeStep: HomeStep) => {
+  const leaveRoomAndGoHome = async (
+    nextHomeStep: HomeStep,
+    options: { skipLeave?: boolean } = {},
+  ) => {
     setBusy(true);
     try {
       await runWhiteFade(
         async () => {
           clearSubscription();
           // ローカル一人はネット退出不要
-          if (roomId && myId) {
+          if (roomId && myId && !options.skipLeave) {
             const me = players.find((p) => p.id === myId);
             try {
               await leaveOnlineRoom({
@@ -479,6 +515,37 @@ export function GameApp() {
         },
         { fadeMs: NAV_FADE_MS, holdMs: NAV_HOLD_MS },
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    ejectRef.current = (message, skipLeave = false) => {
+      if (ejectLockRef.current || phaseRef.current === "home") return;
+      ejectLockRef.current = true;
+      void leaveRoomAndGoHome(lobbyBackStepRef.current, { skipLeave }).finally(
+        () => {
+          ejectLockRef.current = false;
+          setErrorMessage(message);
+        },
+      );
+    };
+  });
+
+  const handleKick = async (targetId: string) => {
+    if (!roomId || !myId) return;
+    setBusy(true);
+    setErrorMessage("");
+    try {
+      const snapshot = await kickOnlinePlayer({
+        roomId,
+        hostId: myId,
+        targetId,
+      });
+      applySnapshot(snapshot);
+    } catch (error) {
+      setErrorMessage((error as Error).message || "退出させられませんでした。");
     } finally {
       setBusy(false);
     }
@@ -546,7 +613,7 @@ export function GameApp() {
       shirazuPoemIndex = shirazuPoemForSeat(
         mySeat,
         turn.roundIndex,
-        players.length,
+        poems.length,
       );
       const hand = poems[shirazuPoemIndex];
       const filled = hand ? poemMoraCount(hand) : 0;
@@ -729,10 +796,7 @@ export function GameApp() {
     }
   };
 
-  const mySeat = useMemo(
-    () => players.findIndex((p) => p.id === myId),
-    [players, myId],
-  );
+  const mySeat = useMemo(() => shirazuSeatOf(players, myId), [players, myId]);
   const writer = useMemo(() => {
     if (!isLineTurn(turn)) return null;
     return players.find((p) => p.id === turn.writerId) ?? null;
@@ -746,10 +810,10 @@ export function GameApp() {
     const poemIndex = shirazuPoemForSeat(
       mySeat,
       turn.roundIndex,
-      players.length,
+      poems.length,
     );
     return poems[poemIndex] ?? null;
-  }, [turn, mySeat, poems, players.length]);
+  }, [turn, mySeat, poems]);
 
   const promptLines = useMemo(() => {
     if (!isLineTurn(turn) || poems.length === 0) return [];
@@ -872,6 +936,9 @@ export function GameApp() {
               onStart={() => {
                 void handleStartGame();
               }}
+              onKick={(id) => {
+                void handleKick(id);
+              }}
               onBack={() => {
                 void handleLobbyBack();
               }}
@@ -936,6 +1003,17 @@ export function GameApp() {
               />
             </ViewportFit>
           )}
+
+        {phase === "writing" && roomId && me?.isHost && (
+          <KickMenu
+            players={players}
+            myId={myId}
+            busy={busy}
+            onKick={(id) => {
+              void handleKick(id);
+            }}
+          />
+        )}
 
         {phase === "reveal" && poems.length > 0 && (
           <ViewportFit minScale={0.72}>

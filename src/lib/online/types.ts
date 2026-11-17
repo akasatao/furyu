@@ -51,5 +51,6 @@ export function rowToPlayer(row: RoomPlayerRow): Player {
     isHost: row.is_host,
     color: row.color,
     partIndexes: row.part_indexes ?? [],
+    seat: row.seat,
   };
 }

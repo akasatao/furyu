@@ -1,6 +1,6 @@
 "use client";
 
-import { assignPartIndexes } from "@/lib/roles";
+import { assignPartIndexes, writerForStep } from "@/lib/roles";
 import { getSupabase } from "@/lib/supabase/client";
 import {
   assignShirazuOwners,
@@ -12,12 +12,14 @@ import {
 import {
   applyOnlineSubmit,
   applyShirazuRoundSubmit,
+  settleShirazuRound,
 } from "@/lib/online/submit";
 import {
   canSubmitShirazuUnit,
   poemMoraCount,
   SHIRAZU_MORA_PER_POEM,
   shirazuPoemForSeat,
+  shirazuSeatOf,
 } from "@/lib/shirazu";
 import { THEME_MAX_LENGTH } from "@/lib/constants";
 import type { Player, TurnState, VerseMode } from "@/types/game";
@@ -268,12 +270,11 @@ export async function leaveOnlineRoom(options: {
     // 部屋が既に無い場合はそのまま退出扱い
   }
 
-  const { error } = await supabase
-    .from("room_players")
-    .delete()
-    .eq("room_id", options.roomId)
-    .eq("player_id", options.playerId);
-  if (error) throw error;
+  if (phase === "writing") {
+    await removePlayerMidGame(options.roomId, options.playerId);
+  } else {
+    await deletePlayerRow(options.roomId, options.playerId);
+  }
 
   // 披露・執筆中に他連衆が残る場合は部屋を残す（結果閲覧のため）
   const keepForGuests =
@@ -283,6 +284,148 @@ export async function leaveOnlineRoom(options: {
   if (options.isHost && !keepForGuests) {
     await supabase.from("rooms").delete().eq("id", options.roomId);
   }
+}
+
+async function deletePlayerRow(roomId: string, playerId: string) {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("room_players")
+    .delete()
+    .eq("room_id", roomId)
+    .eq("player_id", playerId);
+  if (error) throw error;
+}
+
+/** 抜ける人の残りの句を、残る連衆に座席順で振り直す（俳句・短歌） */
+async function reassignLineParts(
+  snapshot: OnlineRoomSnapshot,
+  targetId: string,
+) {
+  const { room, players } = snapshot;
+  if (!isLineTurn(room.turn)) return;
+  const target = players.find((p) => p.id === targetId);
+  const remaining = players.filter((p) => p.id !== targetId);
+  if (!target || remaining.length === 0) return;
+
+  const stepIndex = room.turn.stepIndex;
+  const moving = target.partIndexes
+    .filter((i) => i >= stepIndex)
+    .sort((a, b) => a - b);
+  if (moving.length === 0) return;
+
+  const nextParts = remaining.map((p) => [...p.partIndexes]);
+  moving.forEach((partIndex, k) => {
+    nextParts[k % remaining.length].push(partIndex);
+  });
+
+  const supabase = getSupabase();
+  for (let i = 0; i < remaining.length; i += 1) {
+    const parts = nextParts[i].sort((a, b) => a - b);
+    if (parts.length === remaining[i].partIndexes.length) continue;
+    const { error } = await supabase
+      .from("room_players")
+      .update({ part_indexes: parts })
+      .eq("room_id", room.id)
+      .eq("player_id", remaining[i].id);
+    if (error) throw error;
+  }
+}
+
+/** 抜けた人がいても進行が止まらないよう、手番を整える */
+async function repairTurnAfterLeave(roomId: string) {
+  const supabase = getSupabase();
+  for (let attempt = 0; attempt < SUBMIT_MAX_RETRIES; attempt += 1) {
+    const { room, players } = await loadRoomSnapshot(roomId);
+    if (room.phase !== "writing" || players.length === 0) return;
+
+    if (isLineTurn(room.turn)) {
+      const turn = room.turn;
+      if (players.some((p) => p.id === turn.writerId)) return;
+      let writerId = players[0].id;
+      try {
+        writerId = writerForStep(players, turn.stepIndex).id;
+      } catch {
+        // 担当が見つからなければ先頭の連衆に任せる
+      }
+      const { data, error } = await supabase
+        .from("rooms")
+        .update({ turn: { ...turn, writerId, draft: "", status: "idle" } })
+        .eq("id", roomId)
+        .eq("step_index", room.step_index)
+        .select("id");
+      if (error) throw error;
+      if (data?.length) return;
+      continue;
+    }
+
+    if (isShirazuTurn(room.turn)) {
+      const presentIds = new Set(players.map((p) => p.id));
+      const submittedIds = room.turn.submittedIds.filter((id) =>
+        presentIds.has(id),
+      );
+      const settled = settleShirazuRound(
+        room.poems,
+        { ...room.turn, submittedIds },
+        players.length,
+      );
+      const unchanged =
+        !settled.done &&
+        isShirazuTurn(settled.nextTurn) &&
+        settled.nextTurn.roundIndex === room.turn.roundIndex &&
+        submittedIds.length === room.turn.submittedIds.length;
+      if (unchanged) return;
+      const { data, error } = await supabase
+        .from("rooms")
+        .update({
+          phase: settled.done ? "reveal" : "writing",
+          step_index: room.step_index + 1,
+          turn: settled.nextTurn,
+        })
+        .eq("id", roomId)
+        .eq("step_index", room.step_index)
+        .select("id");
+      if (error) throw error;
+      if (data?.length) return;
+      continue;
+    }
+
+    return;
+  }
+}
+
+/** 執筆中に連衆が抜けたとき：担当を振り直してから行を消し、手番を整える */
+async function removePlayerMidGame(roomId: string, targetId: string) {
+  const snapshot = await loadRoomSnapshot(roomId);
+  await reassignLineParts(snapshot, targetId);
+  await deletePlayerRow(roomId, targetId);
+  await repairTurnAfterLeave(roomId);
+}
+
+export async function kickOnlinePlayer(options: {
+  roomId: string;
+  hostId: string;
+  targetId: string;
+}): Promise<OnlineRoomSnapshot> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  if (snapshot.room.host_id !== options.hostId) {
+    throw new Error("亭主だけが退出させられます。");
+  }
+  if (options.targetId === options.hostId) {
+    throw new Error("亭主は自分を退出させられません。");
+  }
+  if (!snapshot.players.some((p) => p.id === options.targetId)) {
+    return snapshot;
+  }
+
+  if (snapshot.room.phase === "lobby") {
+    await deletePlayerRow(options.roomId, options.targetId);
+  } else if (snapshot.room.phase === "writing") {
+    await removePlayerMidGame(options.roomId, options.targetId);
+  } else {
+    throw new Error("披露中は退出させられません。");
+  }
+
+  return loadRoomSnapshot(options.roomId);
 }
 
 export async function startOnlineGame(options: {
@@ -426,20 +569,25 @@ async function trySubmitShirazu(
   if (!isShirazuTurn(room.turn)) {
     throw new Error("いまは提出できません。");
   }
-  const turn = room.turn;
+  // 途中で抜けた人の提出は数えない
+  const presentIds = new Set(players.map((p) => p.id));
+  const turn = {
+    ...room.turn,
+    submittedIds: room.turn.submittedIds.filter((id) => presentIds.has(id)),
+  };
 
   // 既に提出済みなら成功扱いで最新を返す
   if (turn.submittedIds.includes(options.playerId)) {
     return snapshot;
   }
 
-  const seat = players.findIndex((p) => p.id === options.playerId);
+  const seat = shirazuSeatOf(players, options.playerId);
   if (seat < 0) throw new Error("連衆情報が見つかりません。");
 
   const poemIndex = shirazuPoemForSeat(
     seat,
     turn.roundIndex,
-    players.length,
+    room.poems.length,
   );
   const hand = room.poems[poemIndex];
   const filled = hand ? poemMoraCount(hand) : 0;
