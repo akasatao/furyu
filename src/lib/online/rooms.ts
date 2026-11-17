@@ -21,7 +21,7 @@ import {
   shirazuPoemForSeat,
   shirazuSeatOf,
 } from "@/lib/shirazu";
-import { THEME_MAX_LENGTH } from "@/lib/constants";
+import { modeAllowsSolo, THEME_MAX_LENGTH } from "@/lib/constants";
 import type { Player, TurnState, VerseMode } from "@/types/game";
 import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
 import {
@@ -161,6 +161,20 @@ function isMissingRoleColumn(error: unknown): boolean {
   return isMissingColumn(error, "role");
 }
 
+/** 抜けた座席を詰めず、空いているいちばん小さい番号を返す */
+function vacantPlayerSeat(players: Player[], maxPlayers: number): number {
+  const taken = new Set(
+    players
+      .map((player) => player.seat)
+      .filter((seat): seat is number => seat != null && seat >= 0),
+  );
+  const limit = Math.max(maxPlayers, players.length + 1);
+  for (let seat = 0; seat < limit; seat += 1) {
+    if (!taken.has(seat)) return seat;
+  }
+  return players.length;
+}
+
 function toOpenPhase(phase: string): OpenRoomSummary["phase"] {
   if (phase === "writing" || phase === "reveal") return phase;
   return "lobby";
@@ -189,11 +203,16 @@ function summarizeOpenRooms(rows: OpenRoomRow[]): OpenRoomSummary[] {
         hostName: host?.name ?? "",
         playerCount,
         maxPlayers: row.max_players,
-        joinable: phase === "lobby" && playerCount < row.max_players,
+        joinable: phase !== "reveal" && playerCount < row.max_players,
         createdAt: row.created_at,
       };
     })
-    .filter((room) => room.hostName !== "" && room.playerCount > 0);
+    .filter((room) => {
+      if (room.hostName === "" || room.playerCount <= 0) return false;
+      // 俳句・短歌のひとりで詠むは観戦にも入門にも出さない
+      if (modeAllowsSolo(room.mode) && room.maxPlayers <= 1) return false;
+      return true;
+    });
 }
 
 async function selectOpenRooms(
@@ -312,10 +331,15 @@ export function subscribeOpenRooms(
     });
 
   void refresh();
+  // 誰も更新しない部屋は変更イベントが来ないので、一覧を開いているあいだ自分で見にいく
+  const timer = window.setInterval(() => {
+    void refresh();
+  }, ROOM_HEARTBEAT_MS);
 
   return {
     unsubscribe: () => {
       alive = false;
+      window.clearInterval(timer);
       void supabase.removeChannel(channel);
     },
   };
@@ -345,12 +369,15 @@ export async function joinOnlineRoom(options: {
     current.spectators.some((p) => p.id === options.playerId);
   if (alreadyIn) return current;
 
-  const spectate = options.asSpectator || room.phase !== "lobby";
+  const spectate = options.asSpectator || room.phase === "reveal";
+  if (spectate && modeAllowsSolo(room.mode) && room.max_players <= 1) {
+    throw new Error("ひとりで詠む和室は観戦できません。");
+  }
   if (!spectate && current.players.length >= room.max_players) {
     throw new Error("この和室は定員です。");
   }
 
-  const seat = spectate ? -1 : current.players.length;
+  const seat = spectate ? -1 : vacantPlayerSeat(current.players, room.max_players);
   const { error: insertError } = await supabase.from("room_players").insert({
     room_id: room.id,
     player_id: options.playerId,
