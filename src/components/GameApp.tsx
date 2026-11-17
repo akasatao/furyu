@@ -23,15 +23,14 @@ import {
 import {
   advanceShirazuReveal,
   createOnlineRoom,
-  deleteRoomOnUnload,
   handOverAndRemove,
   joinOnlineRoom,
   kickOnlinePlayer,
   leaveOnlineRoom,
   leaveProcessorId,
+  leaveRoomOnUnload,
   resetRoomToLobby,
   ROOM_HEARTBEAT_MS,
-  sendLeaveOnUnload,
   startOnlineGame,
   touchRoom,
   submitOnlineTurn,
@@ -315,20 +314,16 @@ export function GameApp() {
     [applySnapshot, clearSubscription],
   );
 
-  /** リロード・タブを閉じるときは、抜けることを他の連衆へ知らせる */
+  /** リロード・タブを閉じるときは、自分の在席を消し、残っている連衆へ知らせる */
   useEffect(() => {
     if (!roomId || !myId) return;
     const onPageHide = () => {
-      const watchingNow = spectatorsRef.current.some((p) => p.id === myId);
-      if (watchingNow) {
-        sendLeaveOnUnload(roomId, myId);
-        return;
-      }
-      if (playersRef.current.length <= 1) {
-        deleteRoomOnUnload(roomId);
-        return;
-      }
-      sendLeaveOnUnload(roomId, myId);
+      leaveRoomOnUnload({
+        roomId,
+        playerId: myId,
+        players: playersRef.current,
+        watching: spectatorsRef.current.some((p) => p.id === myId),
+      });
     };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);

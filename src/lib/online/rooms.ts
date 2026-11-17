@@ -251,7 +251,9 @@ async function listOpenRoomsByAge(): Promise<OpenRoomSummary[]> {
     .order("created_at", { ascending: false });
 
   if (!listed.error) {
-    return summarizeOpenRooms((listed.data ?? []) as unknown as OpenRoomRow[]);
+    return summarizeAndDropEmpty(
+      (listed.data ?? []) as unknown as OpenRoomRow[],
+    );
   }
   if (!isMissingRoleColumn(listed.error)) throw listed.error;
 
@@ -264,7 +266,30 @@ async function listOpenRoomsByAge(): Promise<OpenRoomSummary[]> {
     .gte("created_at", since)
     .order("created_at", { ascending: false });
   if (legacy.error) throw legacy.error;
-  return summarizeOpenRooms((legacy.data ?? []) as unknown as OpenRoomRow[]);
+  return summarizeAndDropEmpty(
+    (legacy.data ?? []) as unknown as OpenRoomRow[],
+  );
+}
+
+/** 連衆が誰もいない部屋を消してから一覧にする */
+async function summarizeAndDropEmpty(
+  rows: OpenRoomRow[],
+): Promise<OpenRoomSummary[]> {
+  const emptyIds = rows
+    .filter((row) => {
+      const players = (row.room_players ?? []).filter(
+        (p) => p.role !== "spectator",
+      );
+      return players.length === 0;
+    })
+    .map((row) => row.id);
+  if (emptyIds.length > 0) {
+    const supabase = getSupabase();
+    await supabase.from("rooms").delete().in("id", emptyIds);
+  }
+  return summarizeOpenRooms(
+    rows.filter((row) => !emptyIds.includes(row.id)),
+  );
 }
 
 export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
@@ -277,11 +302,11 @@ export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
 
   const listed = await selectOpenRooms(freshAfter, true);
   if ("missingLastSeen" in listed) return listOpenRoomsByAge();
-  if ("rows" in listed) return summarizeOpenRooms(listed.rows);
+  if ("rows" in listed) return summarizeAndDropEmpty(listed.rows);
 
   const legacy = await selectOpenRooms(freshAfter, false);
   if ("missingLastSeen" in legacy) return listOpenRoomsByAge();
-  if ("rows" in legacy) return summarizeOpenRooms(legacy.rows);
+  if ("rows" in legacy) return summarizeAndDropEmpty(legacy.rows);
   throw new Error("和室一覧を読み込めませんでした。");
 }
 
@@ -952,6 +977,106 @@ export function sendLeaveOnUnload(roomId: string, playerId: string): void {
   void postRoomBroadcast(roomId, LEAVE_EVENT, { playerId }, true);
 }
 
+function supabaseRestKey(): { url: string; key: string } | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return { url, key };
+}
+
+/** ページを閉じる途中でも届くよう keepalive で自分の在席行を消す */
+function deletePlayerOnUnload(roomId: string, playerId: string): void {
+  const rest = supabaseRestKey();
+  if (!rest) return;
+  void fetch(
+    `${rest.url}/rest/v1/room_players?room_id=eq.${encodeURIComponent(roomId)}&player_id=eq.${encodeURIComponent(playerId)}`,
+    {
+      method: "DELETE",
+      keepalive: true,
+      headers: {
+        apikey: rest.key,
+        Authorization: `Bearer ${rest.key}`,
+      },
+    },
+  ).catch(() => {});
+}
+
+/** ページを閉じる途中でも届くよう keepalive で次の亭主を立てる */
+function promoteHostOnUnload(roomId: string, nextHostId: string): void {
+  const rest = supabaseRestKey();
+  if (!rest) return;
+  const headers = {
+    apikey: rest.key,
+    Authorization: `Bearer ${rest.key}`,
+    "Content-Type": "application/json",
+    Prefer: "return=minimal",
+  };
+  void fetch(
+    `${rest.url}/rest/v1/room_players?room_id=eq.${encodeURIComponent(roomId)}&player_id=eq.${encodeURIComponent(nextHostId)}`,
+    {
+      method: "PATCH",
+      keepalive: true,
+      headers,
+      body: JSON.stringify({ is_host: true }),
+    },
+  ).catch(() => {});
+  void fetch(
+    `${rest.url}/rest/v1/rooms?id=eq.${encodeURIComponent(roomId)}`,
+    {
+      method: "PATCH",
+      keepalive: true,
+      headers,
+      body: JSON.stringify({ host_id: nextHostId }),
+    },
+  ).catch(() => {});
+}
+
+/** ページを閉じる途中でも届くよう keepalive で部屋を消す（最後の一人用） */
+export function deleteRoomOnUnload(roomId: string): void {
+  const rest = supabaseRestKey();
+  if (!rest) return;
+  void fetch(`${rest.url}/rest/v1/rooms?id=eq.${encodeURIComponent(roomId)}`, {
+    method: "DELETE",
+    keepalive: true,
+    headers: {
+      apikey: rest.key,
+      Authorization: `Bearer ${rest.key}`,
+    },
+  }).catch(() => {});
+}
+
+/**
+ * リロード・タブ閉じで抜けるときの一括処理。
+ * 他の連衆が全員同時に落ちても行が残らないよう、自分の行はここで消す。
+ */
+export function leaveRoomOnUnload(options: {
+  roomId: string;
+  playerId: string;
+  players: Player[];
+  watching: boolean;
+}): void {
+  if (options.watching) {
+    deletePlayerOnUnload(options.roomId, options.playerId);
+    return;
+  }
+
+  const others = options.players.filter((p) => p.id !== options.playerId);
+  if (others.length === 0) {
+    deleteRoomOnUnload(options.roomId);
+    return;
+  }
+
+  const me = options.players.find((p) => p.id === options.playerId);
+  if (me?.isHost) {
+    const nextHost = [...others].sort(byJoinOrder)[0];
+    if (nextHost) promoteHostOnUnload(options.roomId, nextHost.id);
+  }
+
+  deletePlayerOnUnload(options.roomId, options.playerId);
+  // 残っている連衆に担当の振り直しなどを任せる
+  sendLeaveOnUnload(options.roomId, options.playerId);
+}
+
 /** 早く入った順（亭主の引き継ぎ順） */
 function byJoinOrder(a: Player, b: Player): number {
   return (a.joinedAt ?? "").localeCompare(b.joinedAt ?? "");
@@ -969,9 +1094,28 @@ export function leaveProcessorId(
   return others.find((p) => p.isHost)?.id ?? null;
 }
 
+async function promoteHost(
+  roomId: string,
+  nextHostId: string,
+): Promise<void> {
+  const supabase = getSupabase();
+  const { error: playerError } = await supabase
+    .from("room_players")
+    .update({ is_host: true })
+    .eq("room_id", roomId)
+    .eq("player_id", nextHostId);
+  if (playerError) throw playerError;
+  const { error: roomError } = await supabase
+    .from("rooms")
+    .update({ host_id: nextHostId })
+    .eq("id", roomId);
+  if (roomError) throw roomError;
+}
+
 /**
  * リロード・タブを閉じて抜けた連衆の後片付け。
  * 亭主だった場合は、早く入った順で次の連衆を亭主にしてから行を消す。
+ * 本人が pagehide で先に行を消している場合も、亭主と手番だけ直す。
  */
 export async function handOverAndRemove(options: {
   roomId: string;
@@ -979,36 +1123,39 @@ export async function handOverAndRemove(options: {
 }): Promise<void> {
   const snapshot = await loadRoomSnapshot(options.roomId);
   const leaver = snapshot.players.find((p) => p.id === options.leaverId);
+  const supabase = getSupabase();
+
   if (!leaver) {
     if (snapshot.spectators.some((p) => p.id === options.leaverId)) {
       await deletePlayerRow(options.roomId, options.leaverId);
+      return;
+    }
+    // 本人の keepalive 削除が先に届いた場合
+    if (snapshot.players.length === 0) {
+      await supabase.from("rooms").delete().eq("id", options.roomId);
+      return;
+    }
+    if (snapshot.room.host_id === options.leaverId) {
+      const nextHost = [...snapshot.players].sort(byJoinOrder)[0];
+      if (nextHost) await promoteHost(options.roomId, nextHost.id);
+    }
+    if (snapshot.room.phase === "writing") {
+      await repairTurnAfterLeave(options.roomId);
     }
     return;
   }
+
   const others = snapshot.players
     .filter((p) => p.id !== options.leaverId)
     .sort(byJoinOrder);
 
-  const supabase = getSupabase();
   if (others.length === 0) {
     await supabase.from("rooms").delete().eq("id", options.roomId);
     return;
   }
 
   if (leaver.isHost) {
-    const nextHost = others[0];
-    // 亭主不在の瞬間を作らないよう、先に新しい亭主を立てる
-    const { error: playerError } = await supabase
-      .from("room_players")
-      .update({ is_host: true })
-      .eq("room_id", options.roomId)
-      .eq("player_id", nextHost.id);
-    if (playerError) throw playerError;
-    const { error: roomError } = await supabase
-      .from("rooms")
-      .update({ host_id: nextHost.id })
-      .eq("id", options.roomId);
-    if (roomError) throw roomError;
+    await promoteHost(options.roomId, others[0].id);
   }
 
   if (snapshot.room.phase === "writing") {
@@ -1016,16 +1163,4 @@ export async function handOverAndRemove(options: {
   } else {
     await deletePlayerRow(options.roomId, options.leaverId);
   }
-}
-
-/** ページを閉じる途中でも届くよう keepalive で部屋を消す（最後の一人用） */
-export function deleteRoomOnUnload(roomId: string): void {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return;
-  void fetch(`${url}/rest/v1/rooms?id=eq.${encodeURIComponent(roomId)}`, {
-    method: "DELETE",
-    keepalive: true,
-    headers: { apikey: key, Authorization: `Bearer ${key}` },
-  }).catch(() => {});
 }
