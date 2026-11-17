@@ -460,8 +460,15 @@ export async function leaveOnlineRoom(options: {
   const keepForGuests =
     options.isHost && remainingGuests > 0 && phase === "reveal";
   if (options.isHost && !keepForGuests) {
-    await supabase.from("rooms").delete().eq("id", options.roomId);
+    await closeOnlineRoom(options.roomId);
   }
+}
+
+/** 観戦者にも届くよう知らせてから部屋を消す（絞り込み購読は DELETE を拾えないことがある） */
+async function closeOnlineRoom(roomId: string): Promise<void> {
+  await postRoomBroadcast(roomId, SYNC_EVENT, {});
+  const supabase = getSupabase();
+  await supabase.from("rooms").delete().eq("id", roomId);
 }
 
 async function deletePlayerRow(roomId: string, playerId: string) {
@@ -1142,7 +1149,7 @@ export async function handOverAndRemove(options: {
     }
     // 本人の keepalive 削除が先に届いた場合
     if (snapshot.players.length === 0) {
-      await supabase.from("rooms").delete().eq("id", options.roomId);
+      await closeOnlineRoom(options.roomId);
       return;
     }
     if (snapshot.room.host_id === options.leaverId) {
@@ -1160,7 +1167,7 @@ export async function handOverAndRemove(options: {
     .sort(byJoinOrder);
 
   if (others.length === 0) {
-    await supabase.from("rooms").delete().eq("id", options.roomId);
+    await closeOnlineRoom(options.roomId);
     return;
   }
 

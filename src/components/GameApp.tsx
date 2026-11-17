@@ -263,8 +263,11 @@ export function GameApp() {
       subRef.current = subscribeOnlineRoom(
         id,
         (snapshot) => {
-          // 待機中・執筆中に亭主が抜けたら、他の連衆も自動で退出
-          // （部屋ごと消える途中で連衆が空になる場合もこちらで拾う）
+          // 連衆が誰もいない／亭主がいない和室は終了扱い（観戦者も退出）
+          if (snapshot.players.length === 0) {
+            ejectRef.current("和室が閉じました");
+            return;
+          }
           if (
             (snapshot.room.phase === "lobby" ||
               snapshot.room.phase === "writing") &&
@@ -287,12 +290,10 @@ export function GameApp() {
             setRevealReady(true);
           }
         },
-        (error) => {
-          if (phaseRef.current === "lobby" || phaseRef.current === "writing") {
-            ejectRef.current("亭主が退出しました");
-            return;
-          }
-          setErrorMessage(error.message);
+        () => {
+          // 部屋行が消えた・読めないとき。披露中の観戦者も含めて退出
+          if (phaseRef.current === "home") return;
+          ejectRef.current("和室が閉じました");
         },
         (leaverId) => {
           // リロード・タブを閉じた連衆の後片付けは、担当の一人だけが行う。
