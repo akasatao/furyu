@@ -41,7 +41,10 @@ function asRoom(row: RoomRow): RoomRow {
   };
 }
 
-async function fetchPlayers(roomId: string): Promise<Player[]> {
+async function fetchMembers(roomId: string): Promise<{
+  players: Player[];
+  spectators: Player[];
+}> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("room_players")
@@ -49,7 +52,14 @@ async function fetchPlayers(roomId: string): Promise<Player[]> {
     .eq("room_id", roomId)
     .order("seat", { ascending: true });
   if (error) throw error;
-  return ((data ?? []) as RoomPlayerRow[]).map(rowToPlayer);
+  const players: Player[] = [];
+  const spectators: Player[] = [];
+  for (const row of (data ?? []) as RoomPlayerRow[]) {
+    const member = rowToPlayer(row);
+    if (row.role === "spectator") spectators.push(member);
+    else players.push(member);
+  }
+  return { players, spectators };
 }
 
 export async function loadRoomSnapshot(
@@ -62,8 +72,8 @@ export async function loadRoomSnapshot(
     .eq("id", roomId)
     .single();
   if (error) throw error;
-  const players = await fetchPlayers(roomId);
-  return { room: asRoom(data as RoomRow), players };
+  const { players, spectators } = await fetchMembers(roomId);
+  return { room: asRoom(data as RoomRow), players, spectators };
 }
 
 export async function createOnlineRoom(options: {
@@ -122,44 +132,82 @@ export async function createOnlineRoom(options: {
 /** 放置された部屋を一覧に出さないための上限 */
 const OPEN_ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
+function isMissingRoleColumn(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" &&
+          error &&
+          "message" in error &&
+          typeof error.message === "string"
+        ? error.message
+        : "";
+  return /role/i.test(message) && /does not exist|schema cache/i.test(message);
+}
+
+function toOpenPhase(phase: string): OpenRoomSummary["phase"] {
+  if (phase === "writing" || phase === "reveal") return phase;
+  return "lobby";
+}
+
 type OpenRoomRow = Pick<
   RoomRow,
-  "id" | "mode" | "max_players" | "theme" | "created_at"
+  "id" | "mode" | "phase" | "max_players" | "theme" | "created_at"
 > & {
-  room_players: Pick<RoomPlayerRow, "name" | "is_host">[] | null;
+  room_players: Pick<RoomPlayerRow, "name" | "is_host" | "role">[] | null;
 };
+
+function summarizeOpenRooms(rows: OpenRoomRow[]): OpenRoomSummary[] {
+  return rows
+    .map((row) => {
+      const members = row.room_players ?? [];
+      const players = members.filter((p) => p.role !== "spectator");
+      const host = players.find((p) => p.is_host);
+      const phase = toOpenPhase(row.phase);
+      const playerCount = players.length;
+      return {
+        id: row.id,
+        mode: row.mode,
+        phase,
+        theme: typeof row.theme === "string" ? row.theme : "",
+        hostName: host?.name ?? "",
+        playerCount,
+        maxPlayers: row.max_players,
+        joinable: phase === "lobby" && playerCount < row.max_players,
+        createdAt: row.created_at,
+      };
+    })
+    .filter((room) => room.hostName !== "" && room.playerCount > 0);
+}
 
 export async function listOpenRooms(): Promise<OpenRoomSummary[]> {
   const supabase = getSupabase();
   const since = new Date(Date.now() - OPEN_ROOM_MAX_AGE_MS).toISOString();
-  const { data, error } = await supabase
+  const listed = await supabase
     .from("rooms")
-    .select("id, mode, max_players, theme, created_at, room_players(name, is_host)")
-    .eq("phase", "lobby")
+    .select(
+      "id, mode, phase, max_players, theme, created_at, room_players(name, is_host, role)",
+    )
+    .in("phase", ["lobby", "writing", "reveal"])
     .gte("created_at", since)
     .order("created_at", { ascending: false });
-  if (error) throw error;
 
-  return ((data ?? []) as unknown as OpenRoomRow[])
-    .map((row) => {
-      const members = row.room_players ?? [];
-      const host = members.find((p) => p.is_host);
-      return {
-        id: row.id,
-        mode: row.mode,
-        theme: typeof row.theme === "string" ? row.theme : "",
-        hostName: host?.name ?? "",
-        playerCount: members.length,
-        maxPlayers: row.max_players,
-        createdAt: row.created_at,
-      };
-    })
-    .filter(
-      (room) =>
-        room.hostName !== "" &&
-        room.playerCount > 0 &&
-        room.playerCount < room.maxPlayers,
-    );
+  if (!listed.error) {
+    return summarizeOpenRooms((listed.data ?? []) as unknown as OpenRoomRow[]);
+  }
+  if (!isMissingRoleColumn(listed.error)) throw listed.error;
+
+  // role 列を足す前の DB でも、一覧と入門は続ける
+  const legacy = await supabase
+    .from("rooms")
+    .select(
+      "id, mode, phase, max_players, theme, created_at, room_players(name, is_host)",
+    )
+    .in("phase", ["lobby", "writing", "reveal"])
+    .gte("created_at", since)
+    .order("created_at", { ascending: false });
+  if (legacy.error) throw legacy.error;
+  return summarizeOpenRooms((legacy.data ?? []) as unknown as OpenRoomRow[]);
 }
 
 export function subscribeOpenRooms(
@@ -212,6 +260,8 @@ export async function joinOnlineRoom(options: {
   roomId: string;
   playerId: string;
   nickname: string;
+  /** 一覧の「観戦する」。開宴後は指定がなくても観戦になる */
+  asSpectator?: boolean;
 }): Promise<OnlineRoomSnapshot> {
   const supabase = getSupabase();
 
@@ -224,30 +274,36 @@ export async function joinOnlineRoom(options: {
   if (!roomData) throw new Error("その和室はもう閉じられています。");
 
   const room = asRoom(roomData as RoomRow);
-  if (room.phase !== "lobby") {
-    throw new Error("この和室はすでに開宴しています。");
-  }
+  const current = await loadRoomSnapshot(room.id);
+  const alreadyIn =
+    current.players.some((p) => p.id === options.playerId) ||
+    current.spectators.some((p) => p.id === options.playerId);
+  if (alreadyIn) return current;
 
-  const players = await fetchPlayers(room.id);
-  const existing = players.find((p) => p.id === options.playerId);
-  if (existing) {
-    return { room, players };
-  }
-  if (players.length >= room.max_players) {
+  const spectate = options.asSpectator || room.phase !== "lobby";
+  if (!spectate && current.players.length >= room.max_players) {
     throw new Error("この和室は定員です。");
   }
 
-  const seat = players.length;
+  const seat = spectate ? -1 : current.players.length;
   const { error: insertError } = await supabase.from("room_players").insert({
     room_id: room.id,
     player_id: options.playerId,
     name: options.nickname,
-    color: playerColor(seat),
+    color: playerColor(seat < 0 ? current.spectators.length : seat),
     is_host: false,
     seat,
     part_indexes: [],
+    ...(spectate ? { role: "spectator" } : {}),
   });
-  if (insertError) throw insertError;
+  if (insertError) {
+    if (spectate && isMissingRoleColumn(insertError)) {
+      throw new Error(
+        "観戦の準備がまだです。Supabase で role 列を追加してください。",
+      );
+    }
+    throw insertError;
+  }
 
   return loadRoomSnapshot(room.id);
 }
@@ -260,14 +316,21 @@ export async function leaveOnlineRoom(options: {
   const supabase = getSupabase();
   let phase: string | null = null;
   let remainingGuests = 0;
+  let snapshot: OnlineRoomSnapshot | null = null;
   try {
-    const snapshot = await loadRoomSnapshot(options.roomId);
+    snapshot = await loadRoomSnapshot(options.roomId);
+  } catch {
+    // 部屋が既に無い場合はそのまま退出扱い
+  }
+  if (snapshot?.spectators.some((p) => p.id === options.playerId)) {
+    await deletePlayerRow(options.roomId, options.playerId);
+    return;
+  }
+  if (snapshot) {
     phase = snapshot.room.phase;
     remainingGuests = snapshot.players.filter(
       (p) => p.id !== options.playerId,
     ).length;
-  } catch {
-    // 部屋が既に無い場合はそのまま退出扱い
   }
 
   if (phase === "writing" && !options.isHost) {
@@ -824,7 +887,12 @@ export async function handOverAndRemove(options: {
 }): Promise<void> {
   const snapshot = await loadRoomSnapshot(options.roomId);
   const leaver = snapshot.players.find((p) => p.id === options.leaverId);
-  if (!leaver) return;
+  if (!leaver) {
+    if (snapshot.spectators.some((p) => p.id === options.leaverId)) {
+      await deletePlayerRow(options.roomId, options.leaverId);
+    }
+    return;
+  }
   const others = snapshot.players
     .filter((p) => p.id !== options.leaverId)
     .sort(byJoinOrder);

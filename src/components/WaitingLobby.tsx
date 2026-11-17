@@ -11,6 +11,8 @@ interface WaitingLobbyProps {
   myId: string;
   maxPlayers: number;
   isHost: boolean;
+  /** 観戦席。開宴も破門もできない */
+  watching?: boolean;
   busy?: boolean;
   onStart: () => void;
   /** 亭主が連衆を破門する */
@@ -28,6 +30,7 @@ export function WaitingLobby({
   myId,
   maxPlayers,
   isHost,
+  watching = false,
   busy = false,
   onStart,
   onKick,
@@ -57,6 +60,7 @@ export function WaitingLobby({
         </h2>
         <p className="text-sm tracking-wider text-black/55">
           {MODE_LABEL[mode]}・{toKanji(players.length)}／{toKanji(maxPlayers)}人
+          {watching ? "・観戦" : ""}
         </p>
         {theme.trim() ? (
           <p className="text-base tracking-[0.2em] text-black/70">
@@ -114,7 +118,9 @@ export function WaitingLobby({
         onClick={onStart}
         className="brush-btn w-full shrink-0 px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
       >
-        {!isHost
+        {watching
+          ? "開宴を待っています"
+          : !isHost
           ? "亭主の開宴を待っています"
           : busy
             ? "開宴中…"

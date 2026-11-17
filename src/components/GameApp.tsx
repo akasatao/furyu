@@ -8,6 +8,7 @@ import { HomeScreen, type HomeStep } from "@/components/HomeScreen";
 import { KickMenu } from "@/components/KickMenu";
 import { RevealPhase } from "@/components/RevealPhase";
 import { ShirazuWritingPhase } from "@/components/ShirazuWritingPhase";
+import { SpectatePhase } from "@/components/SpectatePhase";
 import { WaitingLobby } from "@/components/WaitingLobby";
 import { WritingPhase } from "@/components/WritingPhase";
 import { APP_VERSION } from "@/lib/app-version";
@@ -96,6 +97,9 @@ export function GameApp() {
   const [playerCount, setPlayerCount] = useState(2);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [spectators, setSpectators] = useState<Player[]>([]);
+  /** 自分は観戦席（連衆の進行には入らない） */
+  const [watching, setWatching] = useState(false);
   const [poems, setPoems] = useState<Poem[]>([]);
   const [turn, setTurn] = useState<TurnState | null>(null);
   const [myId, setMyId] = useState("");
@@ -124,11 +128,13 @@ export function GameApp() {
   const phaseRef = useRef(phase);
   const myIdRef = useRef(myId);
   const playersRef = useRef(players);
+  const spectatorsRef = useRef(spectators);
   useEffect(() => {
     phaseRef.current = phase;
     myIdRef.current = myId;
     playersRef.current = players;
-  }, [phase, myId, players]);
+    spectatorsRef.current = spectators;
+  }, [phase, myId, players, spectators]);
   /** 亭主が抜けた／キックされたときの追い出し（二重実行防止） */
   const ejectLockRef = useRef(false);
   const ejectRef = useRef<(message: string, skipLeave?: boolean) => void>(
@@ -208,6 +214,10 @@ export function GameApp() {
       setMode(snapshot.room.mode);
       setPlayerCount(snapshot.room.max_players);
       setPlayers(snapshot.players);
+      setSpectators(snapshot.spectators);
+      setWatching(
+        snapshot.spectators.some((p) => p.id === myIdRef.current),
+      );
       setTheme(
         typeof snapshot.room.theme === "string" ? snapshot.room.theme : "",
       );
@@ -263,7 +273,10 @@ export function GameApp() {
             return;
           }
           const self = myIdRef.current;
-          if (self && !snapshot.players.some((p) => p.id === self)) {
+          const present =
+            snapshot.players.some((p) => p.id === self) ||
+            snapshot.spectators.some((p) => p.id === self);
+          if (self && !present) {
             banishRef.current();
             return;
           }
@@ -281,8 +294,15 @@ export function GameApp() {
           setErrorMessage(error.message);
         },
         (leaverId) => {
-          // リロード・タブを閉じた連衆の後片付けは、担当の一人だけが行う
-          const processor = leaveProcessorId(playersRef.current, leaverId);
+          // リロード・タブを閉じた連衆の後片付けは、担当の一人だけが行う。
+          // 観戦の行消しは亭主が行う。
+          const playersNow = playersRef.current;
+          const spectatorLeave = spectatorsRef.current.some(
+            (p) => p.id === leaverId,
+          );
+          const processor = spectatorLeave
+            ? (playersNow.find((p) => p.isHost)?.id ?? null)
+            : leaveProcessorId(playersNow, leaverId);
           if (!processor || processor !== myIdRef.current) return;
           void handOverAndRemove({ roomId: id, leaverId }).catch((error) => {
             setErrorMessage((error as Error).message);
@@ -297,6 +317,11 @@ export function GameApp() {
   useEffect(() => {
     if (!roomId || !myId) return;
     const onPageHide = () => {
+      const watchingNow = spectatorsRef.current.some((p) => p.id === myId);
+      if (watchingNow) {
+        sendLeaveOnUnload(roomId, myId);
+        return;
+      }
       if (playersRef.current.length <= 1) {
         deleteRoomOnUnload(roomId);
         return;
@@ -397,6 +422,8 @@ export function GameApp() {
       setTheme(nextTheme);
       setPlayerCount(1);
       setRoomId(null);
+      setSpectators([]);
+      setWatching(false);
       setPlayers(roster);
       setPoems(createBlankPoems(verseMode, 1, uid("poem")));
       setTurn({
@@ -479,7 +506,10 @@ export function GameApp() {
     }
   };
 
-  const handleJoinRoom = async (targetRoomId: string) => {
+  const handleJoinRoom = async (
+    targetRoomId: string,
+    asSpectator = false,
+  ) => {
     if (!isSupabaseConfigured()) {
       setErrorMessage("Supabase の設定がありません。");
       return;
@@ -489,12 +519,14 @@ export function GameApp() {
     setErrorMessage("");
     try {
       const playerId = myId || getOrCreatePlayerId();
+      myIdRef.current = playerId;
       setMyId(playerId);
       // 失敗時はフェードなしでエラー表示
       const snapshot = await joinOnlineRoom({
         roomId: targetRoomId,
         playerId,
         nickname: displayName,
+        asSpectator,
       });
       await runWhiteFade(
         () => {
@@ -506,6 +538,10 @@ export function GameApp() {
         },
         { fadeMs: NAV_FADE_MS, holdMs: NAV_HOLD_MS },
       );
+      if (snapshot.room.phase === "reveal") {
+        if (isShirazuRevealTurn(snapshot.room.turn)) setRevealReady(true);
+        else await startRevealWriting();
+      }
     } catch (error) {
       setErrorMessage((error as Error).message || "入室できませんでした。");
     } finally {
@@ -541,6 +577,8 @@ export function GameApp() {
             setPhase("home");
             setRoomId(null);
             setPlayers([]);
+            setSpectators([]);
+            setWatching(false);
             setPoems([]);
             setTurn(null);
             setLocalDraft("");
@@ -962,7 +1000,10 @@ export function GameApp() {
               handleCreateRoom(count, verseMode, nextTheme)
             }
             onJoinRoom={(id) => {
-              void handleJoinRoom(id);
+              void handleJoinRoom(id, false);
+            }}
+            onSpectateRoom={(id) => {
+              void handleJoinRoom(id, true);
             }}
             initialStep={homeStep}
             busy={busy}
@@ -978,6 +1019,7 @@ export function GameApp() {
               myId={myId}
               maxPlayers={playerCount}
               isHost={Boolean(me?.isHost)}
+              watching={watching}
               busy={busy}
               onStart={() => {
                 void handleStartGame();
@@ -995,7 +1037,26 @@ export function GameApp() {
           </ViewportFit>
         )}
 
+        {phase === "writing" && watching && (
+          <ViewportFit>
+            <SpectatePhase
+              poems={poems}
+              theme={theme}
+              note={
+                isLineTurn(turn) && writer
+                  ? `${writer.name}が書いています`
+                  : ""
+              }
+              busy={busy}
+              onLeave={() => {
+                void handleLeave();
+              }}
+            />
+          </ViewportFit>
+        )}
+
         {phase === "writing" &&
+          !watching &&
           isShirazuTurn(turn) &&
           handPoem && (
             <ViewportFit>
@@ -1018,6 +1079,7 @@ export function GameApp() {
           )}
 
         {phase === "writing" &&
+          !watching &&
           isLineTurn(turn) &&
           writer &&
           activePoem && (
@@ -1050,7 +1112,7 @@ export function GameApp() {
             </ViewportFit>
           )}
 
-        {phase === "writing" && roomId && me?.isHost && (
+        {phase === "writing" && !watching && roomId && me?.isHost && (
           <KickMenu
             players={players}
             myId={myId}
@@ -1079,7 +1141,10 @@ export function GameApp() {
               onAdvanceReveal={() => {
                 void handleAdvanceReveal();
               }}
-              canRematch={Boolean(me?.isHost) || (!roomId && players.length === 1)}
+              canRematch={
+                !watching &&
+                (Boolean(me?.isHost) || (!roomId && players.length === 1))
+              }
               hostPresent={players.some((p) => p.isHost)}
               isSolo={players.length === 1}
               onRematch={() => {

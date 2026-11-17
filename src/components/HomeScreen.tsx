@@ -38,6 +38,7 @@ interface HomeScreenProps {
     theme?: string,
   ) => void | Promise<void>;
   onJoinRoom: (roomId: string) => void;
+  onSpectateRoom: (roomId: string) => void;
   /** ロビーから戻ったときの初期画面 */
   initialStep?: HomeStep;
   busy?: boolean;
@@ -84,6 +85,7 @@ export function HomeScreen({
   onPlayerCountChange,
   onCreateRoom,
   onJoinRoom,
+  onSpectateRoom,
   initialStep = "mode",
   busy = false,
 }: HomeScreenProps) {
@@ -292,6 +294,7 @@ export function HomeScreen({
               void goToStep("mode");
             }}
             onJoin={onJoinRoom}
+            onSpectate={onSpectateRoom}
           />
         </div>
       ) : step === "history" ? (

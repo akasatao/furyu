@@ -29,9 +29,28 @@ create table if not exists public.room_players (
   is_host boolean not null default false,
   seat int not null,
   part_indexes int[] not null default '{}',
+  role text not null default 'player'
+    check (role in ('player', 'spectator')),
   created_at timestamptz not null default now(),
   unique (room_id, player_id)
 );
+
+-- 既存 DB 向け（未追加なら実行）
+alter table public.room_players
+  add column if not exists role text not null default 'player';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'room_players_role_check'
+  ) then
+    alter table public.room_players
+      add constraint room_players_role_check
+      check (role in ('player', 'spectator'));
+  end if;
+end $$;
 
 create index if not exists rooms_code_idx on public.rooms (code);
 create index if not exists room_players_room_id_idx on public.room_players (room_id);
