@@ -13,7 +13,7 @@ import {
   shirazuRoundProgressLabel,
   shirazuUnitMoraCount,
 } from "@/lib/shirazu";
-import { toKanji } from "@/lib/utils";
+import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
 import type { Poem } from "@/types/game";
 
 const LINE_NAMES = ["上の句", "中の句", "下の句"] as const;
@@ -25,6 +25,8 @@ interface ShirazuWritingPhaseProps {
   playerCount: number;
   submittedCount: number;
   hasSubmitted: boolean;
+  myId?: string;
+  theme?: string;
   busy?: boolean;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
@@ -38,6 +40,8 @@ export function ShirazuWritingPhase({
   playerCount,
   submittedCount,
   hasSubmitted,
+  myId,
+  theme = "",
   busy = false,
   onDraftChange,
   onSubmit,
@@ -55,13 +59,17 @@ export function ShirazuWritingPhase({
     filled < SHIRAZU_MORA_PER_POEM
       ? shirazuRoundProgressLabel(filled)
       : "完成";
-  const partHeading =
-    filled < SHIRAZU_MORA_PER_POEM
-      ? (LINE_NAMES[locateShirazuMora(filled).lineIndex] ?? "上の句")
-      : "短冊は埋まりました";
+  const moraLoc =
+    filled < SHIRAZU_MORA_PER_POEM ? locateShirazuMora(filled) : null;
+  const moraProgress = moraLoc
+    ? `${toKanji(moraLoc.moraInLine + 1)}／${toKanji(moraLoc.lineTarget)}音`
+    : "完成";
+  const partHeading = moraLoc
+    ? (LINE_NAMES[moraLoc.lineIndex] ?? "上の句")
+    : "短冊は埋まりました";
   const unitMora = shirazuUnitMoraCount(draft);
   const finishesPoem = !complete && unitMora > 0 && unitMora >= remaining;
-  const ownerLabel = poem.ownerName ? `${poem.ownerName}の句` : null;
+  const ownerLabel = shirazuOwnerLabel(poem, myId);
   /** スマホ＋キーボード時だけ横並びコンパクト表示 */
   const compact = inputFocused && isNarrow;
 
@@ -149,8 +157,10 @@ export function ShirazuWritingPhase({
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col md:flex-none ${
-        compact ? "gap-2 overflow-hidden" : "gap-3 overflow-x-hidden md:gap-5"
+      className={`mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col md:max-w-2xl md:flex-none ${
+        compact || hasSubmitted
+          ? "gap-2 overflow-hidden md:gap-5"
+          : "gap-3 overflow-x-hidden md:gap-5"
       }`}
     >
       <header
@@ -160,7 +170,7 @@ export function ShirazuWritingPhase({
       >
         <p
           className={`tracking-[0.35em] text-black/55 ${
-            compact ? "text-[9px]" : "text-[10px] md:text-xs"
+            compact ? "text-[9px]" : "text-[10px] md:text-sm"
           }`}
         >
           {MODE_LABEL.shirazu}　{toKanji(filled)}／
@@ -169,90 +179,122 @@ export function ShirazuWritingPhase({
         </p>
         {!compact && (
           <>
-            <h2 className="text-xl tracking-widest md:text-3xl">
+            <h2 className="text-xl tracking-widest md:text-4xl">
               {partHeading}
             </h2>
-            <p className="text-[10px] tracking-[0.15em] text-black/50 md:text-xs">
-              {progressLabel}
+            <p className="text-[10px] tracking-[0.15em] text-black/50 md:text-sm">
+              {moraProgress}
             </p>
+            {theme.trim() ? (
+              <p className="text-[10px] tracking-[0.2em] text-black/55 md:text-sm">
+                お題：{theme.trim()}
+              </p>
+            ) : null}
           </>
         )}
+        {compact && theme.trim() ? (
+          <p className="text-[9px] tracking-[0.15em] text-black/50">
+            お題：{theme.trim()}
+          </p>
+        ) : null}
       </header>
 
       <div
         className={`flex min-h-0 flex-1 flex-col items-center overscroll-contain ${
           compact
             ? "justify-between gap-2 overflow-hidden"
-            : "justify-start gap-4 overflow-y-auto md:justify-center"
+            : hasSubmitted
+              ? "justify-center gap-4 overflow-hidden"
+              : "justify-start gap-4 overflow-y-auto md:justify-center"
         }`}
       >
-        {compact ? (
-          <section className="brush-box w-full shrink-0 px-3 py-2.5">
-            {ownerLabel && (
-              <p className="mb-2 text-center text-[10px] tracking-widest text-black/55">
+        <article
+          className={`tanzaku relative flex w-full shrink-0 flex-col items-center ${
+            compact
+              ? "max-w-[7.5rem] px-2 py-2"
+              : "max-w-[14rem] px-3 py-5 md:max-w-[18rem] md:px-4 md:py-6"
+          }`}
+        >
+          <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
+          {ownerLabel ? (
+            <>
+              <p
+                className={`pointer-events-none absolute [writing-mode:vertical-rl] tracking-[0.15em] text-black/55 ${
+                  compact
+                    ? "top-1.5 right-1 text-[7px] leading-tight"
+                    : "top-2.5 right-1.5 text-[10px] leading-relaxed md:top-3 md:right-2 md:text-xs"
+                }`}
+              >
                 {ownerLabel}
               </p>
-            )}
-            <ul className="space-y-1.5">
-              {poemLines.map((line) => (
-                <li
-                  key={line.name}
-                  className="flex items-baseline gap-2"
-                >
-                  <span className="w-10 shrink-0 text-[10px] tracking-widest text-black/40">
-                    {line.name}
-                  </span>
+              <p
+                className={`pointer-events-none absolute [writing-mode:vertical-rl] tracking-[0.15em] text-black/55 ${
+                  compact
+                    ? "bottom-1.5 left-1 text-[7px] leading-tight"
+                    : "bottom-2.5 left-1.5 text-[10px] leading-relaxed md:bottom-3 md:left-2 md:text-xs"
+                }`}
+              >
+                {ownerLabel}
+              </p>
+            </>
+          ) : null}
+          <div
+            className={`flex items-center justify-center ${
+              compact ? "py-1" : "min-h-[220px] py-3 md:min-h-[280px] md:py-4"
+            }`}
+          >
+            <p
+              className={`[writing-mode:vertical-rl] ${
+                compact
+                  ? "text-[0.85rem] leading-[1.55] tracking-[0.2em]"
+                  : "text-[1.35rem] leading-[2] tracking-[0.35em] md:text-[1.6rem]"
+              }`}
+              lang="ja"
+            >
+              {poemLines.map((line, i) => {
+                const isLast = i === poemLines.length - 1;
+                const offset = compact
+                  ? i === 0
+                    ? ""
+                    : isLast
+                      ? "mt-3"
+                      : "mt-1.5"
+                  : i === 0
+                    ? ""
+                    : isLast
+                      ? "mt-10"
+                      : "mt-4";
+                return (
                   <span
-                    className="min-w-0 flex-1 text-lg tracking-[0.2em]"
-                    lang="ja"
+                    key={line.name}
+                    className={`${offset} block min-h-[1em]`.trim()}
                   >
                     {line.text}
                   </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : (
-          <article className="tanzaku relative flex w-full max-w-[14rem] flex-col items-center px-3 py-5">
-            <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
-            <p className="mb-1 w-full text-center text-[10px] tracking-widest text-black/55">
-              {ownerLabel ?? "俳句"}
+                );
+              })}
             </p>
-            <div className="flex min-h-[220px] items-center justify-center py-3">
-              <p
-                className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl]"
-                lang="ja"
-              >
-                {poemLines.map((line, i) => {
-                  const isLast = i === poemLines.length - 1;
-                  const offset =
-                    i === 0 ? "" : isLast ? "mt-10" : "mt-4";
-                  return (
-                    <span
-                      key={line.name}
-                      className={`${offset} block min-h-[1.5em]`.trim()}
-                    >
-                      {line.text}
-                    </span>
-                  );
-                })}
-              </p>
-            </div>
-            <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-1.5 text-center text-[10px] leading-relaxed tracking-wider text-black/50">
-              <span className="block">
-                {ownerLabel ?? MODE_LABEL.shirazu}
-              </span>
+          </div>
+          {!ownerLabel && (
+            <p
+              className={`border-t-2 border-black text-center tracking-wider text-black/50 ${
+                compact
+                  ? "mt-0.5 max-w-[7rem] pt-1 text-[8px] leading-tight"
+                  : "mt-1 max-w-[12rem] pt-1.5 text-[10px] leading-relaxed md:max-w-[16rem] md:pt-2 md:text-xs"
+              }`}
+            >
+              <span className="block">{MODE_LABEL.shirazu}</span>
             </p>
-          </article>
-        )}
+          )}
+        </article>
 
         {hasSubmitted ? (
           <section
-            className={`brush-box w-full px-4 text-center ${
+            className={`brush-box w-full shrink-0 px-4 text-center ${
               compact ? "py-3" : "py-6"
             }`}
           >
-            <p className="animate-pulse text-base tracking-widest text-black/70 md:text-lg">
+            <p className="animate-pulse text-base tracking-widest text-black/70 md:text-xl">
               他の連衆を待っています
             </p>
             <p className="mt-2 text-sm text-black/45">
@@ -320,7 +362,9 @@ export function ShirazuWritingPhase({
                 if (e.key === "Enter" && canSubmit) onSubmit();
               }}
               className={`brush-input w-full px-4 text-center tracking-[0.5em] ${
-                compact ? "py-2 text-2xl" : "py-3 text-3xl md:py-3.5"
+                compact
+                  ? "py-2 text-2xl"
+                  : "py-3 text-3xl md:py-4 md:text-4xl"
               }`}
               autoFocus
             />
@@ -329,7 +373,9 @@ export function ShirazuWritingPhase({
               disabled={!canSubmit}
               onClick={onSubmit}
               className={`brush-btn w-full px-4 tracking-[0.25em] ${
-                compact ? "py-2 text-sm" : "py-3 text-base"
+                compact
+                  ? "py-2 text-sm"
+                  : "py-3 text-base md:py-4 md:text-lg"
               }`}
             >
               {submitLabel}

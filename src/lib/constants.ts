@@ -60,6 +60,31 @@ export const EMPTY_FALLBACK = "（無言）";
 
 export const DEFAULT_NICKNAME = "名無しの俳人";
 
+/** お題の最大文字数 */
+export const THEME_MAX_LENGTH = 20;
+
+/** ランダムお題の候補 */
+export const THEME_PROMPTS: string[] = [
+  "春の雨",
+  "夏の夜",
+  "秋の月",
+  "冬の朝",
+  "飛行機雲",
+  "駅のホーム",
+  "窓辺",
+  "猫",
+  "コーヒー",
+  "帰り道",
+  "風鈴",
+  "夕焼け",
+  "古本",
+  "自転車",
+  "海辺",
+  "静けさ",
+  "ありがとう",
+  "忘れもの",
+];
+
 export const PLAYER_COLORS = [
   "#111111",
   "#333333",

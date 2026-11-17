@@ -2,15 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
+import { BgmPlayer } from "@/components/BgmPlayer";
 import { HomeScreen, type HomeStep } from "@/components/HomeScreen";
 import { RevealPhase } from "@/components/RevealPhase";
 import { ShirazuWritingPhase } from "@/components/ShirazuWritingPhase";
 import { WaitingLobby } from "@/components/WaitingLobby";
 import { WritingPhase } from "@/components/WritingPhase";
 import { APP_VERSION } from "@/lib/app-version";
-import { modeAllowsSolo } from "@/lib/constants";
+import { modeAllowsSolo, THEME_MAX_LENGTH } from "@/lib/constants";
+import { loadNickname, saveNickname } from "@/lib/online/nickname";
 import { getOrCreatePlayerId } from "@/lib/online/player-id";
 import {
+  appendPoemsToHistory,
+  loadPoemHistory,
+  type PoemHistoryEntry,
+} from "@/lib/online/poem-history";
+import {
+  advanceShirazuReveal,
   createOnlineRoom,
   joinOnlineRoom,
   leaveOnlineRoom,
@@ -52,7 +60,7 @@ import type {
   TurnState,
   VerseMode,
 } from "@/types/game";
-import { isLineTurn, isShirazuTurn } from "@/types/game";
+import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
 
 /** 完成→披露用（長め） */
 const PHASE_FADE_MS = 1100;
@@ -94,15 +102,45 @@ export function GameApp() {
   /** 白フェードが終わってから短冊の書き出しを始める */
   const [revealReady, setRevealReady] = useState(false);
   const [homeStep, setHomeStep] = useState<HomeStep>("mode");
+  const [poemHistory, setPoemHistory] = useState<PoemHistoryEntry[]>([]);
+  /** お題。空＝なし */
+  const [theme, setTheme] = useState("");
 
   const subRef = useRef<RoomSubscription | null>(null);
   const fadingRef = useRef(false);
   const submitLockRef = useRef(false);
+  /** 同じ対局の句を二重保存しない */
+  const historySavedKeyRef = useRef("");
   /** ロビーの「戻る」で戻すホーム画面 */
   const lobbyBackStepRef = useRef<HomeStep>("mode");
 
   useEffect(() => {
     setMyId(getOrCreatePlayerId());
+    setNickname(loadNickname());
+    setPoemHistory(loadPoemHistory());
+  }, []);
+
+  const rememberPoems = useCallback(
+    (nextPoems: Poem[], poemTheme?: string) => {
+      if (nextPoems.length === 0) return;
+      const key = nextPoems
+        .map((p) => p.id)
+        .filter(Boolean)
+        .sort()
+        .join(",");
+      if (!key || historySavedKeyRef.current === key) return;
+      const updated = appendPoemsToHistory(nextPoems, {
+        theme: poemTheme ?? theme,
+      });
+      historySavedKeyRef.current = key;
+      setPoemHistory(updated);
+    },
+    [theme],
+  );
+
+  const handleNicknameChange = useCallback((value: string) => {
+    setNickname(value);
+    saveNickname(value);
   }, []);
 
   /** 新しいエラーが来たら表示を開始 */
@@ -147,9 +185,19 @@ export function GameApp() {
       setMode(snapshot.room.mode);
       setPlayerCount(snapshot.room.max_players);
       setPlayers(snapshot.players);
-      setPoems(snapshot.room.poems ?? []);
+      setTheme(
+        typeof snapshot.room.theme === "string" ? snapshot.room.theme : "",
+      );
+      const nextPoems = snapshot.room.poems ?? [];
+      setPoems(nextPoems);
       setTurn(snapshot.room.turn);
       setPhase(snapshot.room.phase);
+      if (snapshot.room.phase === "reveal" && nextPoems.length > 0) {
+        rememberPoems(nextPoems, snapshot.room.theme);
+      }
+      if (snapshot.room.phase === "lobby" || snapshot.room.phase === "writing") {
+        historySavedKeyRef.current = "";
+      }
       const nextTurn = snapshot.room.turn;
       if (isShirazuTurn(nextTurn)) {
         if (nextTurn.submittedIds.includes(myId)) setLocalDraft("");
@@ -161,7 +209,7 @@ export function GameApp() {
         setLocalDraft("");
       }
     },
-    [myId],
+    [myId, rememberPoems],
   );
 
   /** 短冊が回ったら下書きを捨てる */
@@ -252,11 +300,20 @@ export function GameApp() {
 
   /** 一人プレイはネット往復なしで即開始 */
   const startSoloLocal = useCallback(
-    (options?: { playerId?: string; name?: string; verseMode?: VerseMode }) => {
+    (options?: {
+      playerId?: string;
+      name?: string;
+      verseMode?: VerseMode;
+      theme?: string;
+    }) => {
       const playerId =
         options?.playerId || myId || getOrCreatePlayerId();
       const name = options?.name || displayName;
       const verseMode = options?.verseMode || mode;
+      const nextTheme =
+        options?.theme !== undefined
+          ? options.theme.trim().slice(0, THEME_MAX_LENGTH)
+          : theme;
       const parts = assignPartIndexes(1, verseMode);
       const roster: Player[] = [
         {
@@ -271,6 +328,7 @@ export function GameApp() {
       setMyId(playerId);
       setNickname(name);
       setMode(verseMode);
+      setTheme(nextTheme);
       setPlayerCount(1);
       setRoomId(null);
       setRoomCode("");
@@ -286,16 +344,25 @@ export function GameApp() {
       setErrorMessage("");
       setPhase("writing");
     },
-    [displayName, mode, myId],
+    [displayName, mode, myId, theme],
   );
 
-  const handleCreateRoom = async (count?: number, verseMode?: VerseMode) => {
+  const handleCreateRoom = async (
+    count?: number,
+    verseMode?: VerseMode,
+    themeOverride?: string,
+  ) => {
     const activeMode = verseMode ?? mode;
     const maxPlayers = clampPlayerCount(activeMode, count ?? playerCount);
+    const activeTheme =
+      themeOverride !== undefined
+        ? themeOverride.trim().slice(0, THEME_MAX_LENGTH)
+        : theme;
     if (verseMode) setMode(activeMode);
+    if (themeOverride !== undefined) setTheme(activeTheme);
     setPlayerCount(maxPlayers);
-    // ソロ可モードの複数人は「どう詠む？」へ戻す。リレーはモード選択へ
-    lobbyBackStepRef.current = modeAllowsSolo(activeMode) ? "setup" : "mode";
+    // ソロ可モードの複数人は「どう詠む？」へ。リレーはお題へ
+    lobbyBackStepRef.current = modeAllowsSolo(activeMode) ? "setup" : "theme";
     // 一人はローカルですぐ詠み始める（部屋作成の待ち時間なし）
     if (maxPlayers === 1) {
       setBusy(true);
@@ -303,7 +370,7 @@ export function GameApp() {
         await runWhiteFade(
           () => {
             flushSync(() => {
-              startSoloLocal({ verseMode: activeMode });
+              startSoloLocal({ verseMode: activeMode, theme: activeTheme });
             });
           },
           { fadeMs: NAV_FADE_MS, holdMs: NAV_HOLD_MS },
@@ -330,6 +397,7 @@ export function GameApp() {
             nickname: displayName,
             mode: activeMode,
             maxPlayers,
+            theme: activeTheme,
           });
           flushSync(() => {
             setNickname(displayName);
@@ -408,6 +476,7 @@ export function GameApp() {
             setPoems([]);
             setTurn(null);
             setLocalDraft("");
+            setTheme("");
             setErrorMessage("");
           });
         },
@@ -496,9 +565,9 @@ export function GameApp() {
     }
 
     // 連打防止：同期ロック＋ボタン無効化
+    // 下書きはフェード／句反映のあとで消す（完成時に最終句が一瞬消えるのを防ぐ）
     submitLockRef.current = true;
     setBusy(true);
-    setLocalDraft("");
     const poemsBefore = poems;
     if (shirazu && shirazuPoemIndex >= 0 && !shirazuSkip && draft) {
       setPoems(
@@ -509,6 +578,7 @@ export function GameApp() {
           draft,
         ),
       );
+      setLocalDraft("");
     }
     setTurn((prev) => {
       if (isShirazuTurn(prev)) {
@@ -553,10 +623,10 @@ export function GameApp() {
             setPoems(result.poems);
             setTurn(null);
             setPhase("reveal");
+            rememberPoems(result.poems);
           });
           await startRevealWriting();
         } else {
-          setLocalDraft("");
           setPoems(result.poems);
           setTurn({
             stepIndex: result.nextStep,
@@ -564,6 +634,7 @@ export function GameApp() {
             draft: "",
             status: "idle",
           });
+          setLocalDraft("");
         }
       } finally {
         submitLockRef.current = false;
@@ -579,15 +650,19 @@ export function GameApp() {
         draft,
       });
       if (snapshot.room.phase === "reveal" && phase === "writing") {
+        const shirazuReveal = isShirazuRevealTurn(snapshot.room.turn);
         await runWhiteFade(() => {
           setLocalDraft("");
-          setRevealReady(false);
+          // リレー披露前は即待ち画面。俳句／短歌のみ空枠→書き出し用に false
+          setRevealReady(shirazuReveal);
           applySnapshot(snapshot);
         });
-        await startRevealWriting();
+        if (!shirazuReveal) {
+          await startRevealWriting();
+        }
       } else {
-        setLocalDraft("");
         applySnapshot(snapshot);
+        setLocalDraft("");
         if (snapshot.room.phase === "reveal") {
           await startRevealWriting();
         }
@@ -639,6 +714,24 @@ export function GameApp() {
     () => players.find((p) => p.id === myId) ?? null,
     [players, myId],
   );
+
+  const handleAdvanceReveal = async () => {
+    if (!roomId || !myId || busy || !me?.isHost) return;
+    setBusy(true);
+    setErrorMessage("");
+    try {
+      const snapshot = await advanceShirazuReveal({
+        roomId,
+        hostId: myId,
+      });
+      applySnapshot(snapshot);
+    } catch (error) {
+      setErrorMessage((error as Error).message || "次へ進めませんでした。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const mySeat = useMemo(
     () => players.findIndex((p) => p.id === myId),
     [players, myId],
@@ -737,24 +830,29 @@ export function GameApp() {
       }}
     >
       {errorToast}
+      <BgmPlayer />
       <p
         aria-hidden
         className="pointer-events-none fixed top-2 right-3 z-[60] text-[10px] tracking-widest text-black/35 md:top-3 md:right-4"
       >
         {APP_VERSION}
       </p>
-      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:px-6 md:py-10">
+      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-3 md:max-w-5xl md:px-8 md:py-12">
         {phase === "home" && (
           <HomeScreen
             key={homeStep}
             nickname={nickname}
-            onNicknameChange={setNickname}
+            onNicknameChange={handleNicknameChange}
+            poemHistory={poemHistory}
+            myId={myId}
             mode={mode}
+            theme={theme}
+            onThemeChange={setTheme}
             playerCount={playerCount}
             onModeChange={handleModeChange}
             onPlayerCountChange={setPlayerCount}
-            onCreateRoom={(count, verseMode) =>
-              handleCreateRoom(count, verseMode)
+            onCreateRoom={(count, verseMode, nextTheme) =>
+              handleCreateRoom(count, verseMode, nextTheme)
             }
             onJoinRoom={(code) => {
               void handleJoinRoom(code);
@@ -768,6 +866,7 @@ export function GameApp() {
           <WaitingLobby
             roomCode={roomCode}
             mode={mode}
+            theme={theme}
             players={players}
             myId={myId}
             maxPlayers={playerCount}
@@ -795,6 +894,8 @@ export function GameApp() {
               playerCount={sessionSize}
               submittedCount={turn.submittedIds.length}
               hasSubmitted={turn.submittedIds.includes(myId)}
+              myId={myId}
+              theme={theme}
               busy={busy}
               onDraftChange={handleDraftChange}
               onSubmit={() => {
@@ -816,6 +917,7 @@ export function GameApp() {
               playerCount={sessionSize}
               writer={writer}
               myId={myId}
+              theme={theme}
               waitingForPartner={writer.id !== myId}
               isSolo={players.length === 1 && !roomId}
               busy={busy}
@@ -836,8 +938,19 @@ export function GameApp() {
         {phase === "reveal" && poems.length > 0 && (
           <RevealPhase
             poems={poems}
+            theme={theme}
             revealReady={revealReady}
+            revealPoemIndex={
+              isShirazuRevealTurn(turn) ? turn.poemIndex : null
+            }
+            isHost={Boolean(me?.isHost)}
+            myId={myId}
+            advancing={busy}
+            onAdvanceReveal={() => {
+              void handleAdvanceReveal();
+            }}
             canRematch={Boolean(me?.isHost) || (!roomId && players.length === 1)}
+            hostPresent={players.some((p) => p.isHost)}
             isSolo={players.length === 1}
             onRematch={() => {
               void handleRematch();

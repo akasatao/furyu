@@ -20,8 +20,9 @@ import {
   SHIRAZU_MORA_PER_POEM,
   shirazuPoemForSeat,
 } from "@/lib/shirazu";
+import { THEME_MAX_LENGTH } from "@/lib/constants";
 import type { Player, TurnState, VerseMode } from "@/types/game";
-import { isLineTurn, isShirazuTurn } from "@/types/game";
+import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
 import {
   rowToPlayer,
   type OnlineRoomSnapshot,
@@ -34,6 +35,7 @@ function asRoom(row: RoomRow): RoomRow {
     ...row,
     poems: Array.isArray(row.poems) ? row.poems : [],
     turn: row.turn ?? null,
+    theme: typeof row.theme === "string" ? row.theme : "",
   };
 }
 
@@ -67,10 +69,12 @@ export async function createOnlineRoom(options: {
   nickname: string;
   mode: VerseMode;
   maxPlayers: number;
+  theme?: string;
 }): Promise<OnlineRoomSnapshot> {
   const supabase = getSupabase();
   let code = randomRoomCode();
   let room: RoomRow | null = null;
+  const theme = (options.theme ?? "").trim().slice(0, THEME_MAX_LENGTH);
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const { data, error } = await supabase
@@ -84,6 +88,7 @@ export async function createOnlineRoom(options: {
         step_index: 0,
         poems: [],
         turn: null,
+        theme,
       })
       .select("*")
       .single();
@@ -163,6 +168,18 @@ export async function leaveOnlineRoom(options: {
   isHost: boolean;
 }): Promise<void> {
   const supabase = getSupabase();
+  let phase: string | null = null;
+  let remainingGuests = 0;
+  try {
+    const snapshot = await loadRoomSnapshot(options.roomId);
+    phase = snapshot.room.phase;
+    remainingGuests = snapshot.players.filter(
+      (p) => p.id !== options.playerId,
+    ).length;
+  } catch {
+    // 部屋が既に無い場合はそのまま退出扱い
+  }
+
   const { error } = await supabase
     .from("room_players")
     .delete()
@@ -170,7 +187,12 @@ export async function leaveOnlineRoom(options: {
     .eq("player_id", options.playerId);
   if (error) throw error;
 
-  if (options.isHost) {
+  // 披露・執筆中に他連衆が残る場合は部屋を残す（結果閲覧のため）
+  const keepForGuests =
+    options.isHost &&
+    remainingGuests > 0 &&
+    (phase === "reveal" || phase === "writing");
+  if (options.isHost && !keepForGuests) {
     await supabase.from("rooms").delete().eq("id", options.roomId);
   }
 }
@@ -363,6 +385,45 @@ async function trySubmitShirazu(
     .select("id");
   if (error) throw error;
   if (!data?.length) return "retry";
+
+  return loadRoomSnapshot(options.roomId);
+}
+
+export async function advanceShirazuReveal(options: {
+  roomId: string;
+  hostId: string;
+}): Promise<OnlineRoomSnapshot> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  if (snapshot.room.host_id !== options.hostId) {
+    throw new Error("亭主だけが進められます。");
+  }
+  if (snapshot.room.phase !== "reveal") {
+    throw new Error("いまは披露中ではありません。");
+  }
+  if (!isShirazuRevealTurn(snapshot.room.turn)) {
+    throw new Error("リレーの披露進行が見つかりません。");
+  }
+
+  const poemCount = snapshot.room.poems.length;
+  if (snapshot.room.turn.poemIndex >= poemCount) {
+    return snapshot;
+  }
+
+  const nextIndex = snapshot.room.turn.poemIndex + 1;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("rooms")
+    .update({
+      step_index: snapshot.room.step_index + 1,
+      turn: { kind: "shirazu_reveal", poemIndex: nextIndex },
+    })
+    .eq("id", options.roomId)
+    .eq("step_index", snapshot.room.step_index)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length) {
+    return loadRoomSnapshot(options.roomId);
+  }
 
   return loadRoomSnapshot(options.roomId);
 }

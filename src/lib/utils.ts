@@ -128,6 +128,17 @@ export function poemFullText(poem: Poem): string {
   return poem.lines.map((l) => l?.text ?? "？").join("\n");
 }
 
+/** リレー短冊の主表示。自分の句なら「あなたの句」 */
+export function shirazuOwnerLabel(
+  poem: Poem,
+  viewerId?: string | null,
+): string | null {
+  if (!poem.ownerId && !poem.ownerName) return null;
+  if (viewerId && poem.ownerId === viewerId) return "あなたの句";
+  if (poem.ownerName) return `${poem.ownerName}の句`;
+  return null;
+}
+
 export function poemShareText(poem: Poem): string {
   if (poem.mode === "shirazu") {
     const credit = poem.ownerName

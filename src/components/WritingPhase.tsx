@@ -25,6 +25,7 @@ interface WritingPhaseProps {
   playerCount: number;
   writer: Player;
   myId: string;
+  theme?: string;
   waitingForPartner: boolean;
   isSolo?: boolean;
   busy?: boolean;
@@ -42,6 +43,7 @@ export function WritingPhase({
   playerCount,
   writer,
   myId,
+  theme = "",
   waitingForPartner,
   isSolo = false,
   busy = false,
@@ -92,7 +94,7 @@ export function WritingPhase({
 
   if (isSolo) {
     return (
-      <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:flex-none md:gap-6">
+      <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:flex-none md:gap-6">
         {onBack && (
           <div className="flex shrink-0 items-center justify-between gap-2 px-1">
             <button
@@ -121,13 +123,18 @@ export function WritingPhase({
               {MODE_LABEL[mode]}
             </p>
           )}
-          <h2 className="text-2xl tracking-[0.2em] md:text-4xl">
+          <h2 className="text-2xl tracking-[0.2em] md:text-5xl">
             {isShirazu ? "一音を詠む" : label}
           </h2>
           <p className="text-sm tracking-[0.25em] text-black/50">
             {toKanji(stepIndex + 1)}／{toKanji(total)}
             {progressLabel ? `　${progressLabel}` : ""}
           </p>
+          {theme.trim() ? (
+            <p className="text-sm tracking-[0.2em] text-black/55 md:text-base">
+              お題：{theme.trim()}
+            </p>
+          ) : null}
         </header>
 
         {/* 上寄りにまとめ、キーボードで高さが減っても内側だけスクロール */}
@@ -149,7 +156,7 @@ export function WritingPhase({
                       <p className="text-[10px] tracking-widest text-black/35">
                         {displayLabel}
                       </p>
-                      <p className="text-xl tracking-widest md:text-2xl">
+                      <p className="text-xl tracking-widest md:text-3xl">
                         {line.text}
                         {isCurrent ? "…" : ""}
                       </p>
@@ -193,10 +200,10 @@ export function WritingPhase({
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === "Enter" && canSubmit) onSubmit();
               }}
-              className={`brush-input w-full px-4 py-4 ${
+              className={`brush-input w-full px-4 py-4 md:py-5 ${
                 isShirazu
-                  ? "text-center text-4xl tracking-[0.5em]"
-                  : "text-center text-2xl tracking-widest"
+                  ? "text-center text-4xl tracking-[0.5em] md:text-5xl"
+                  : "text-center text-2xl tracking-widest md:text-3xl"
               }`}
               autoFocus
             />
@@ -204,7 +211,7 @@ export function WritingPhase({
               type="button"
               disabled={!canSubmit}
               onClick={onSubmit}
-              className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em]"
+              className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl"
             >
               {submitLabel}
             </button>
@@ -215,26 +222,31 @@ export function WritingPhase({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:flex-none md:gap-5">
+    <div className="mx-auto flex w-full max-w-lg flex-1 min-h-0 flex-col gap-3 md:max-w-2xl md:flex-none md:gap-6">
       <header className="shrink-0 space-y-0.5 text-center md:space-y-1">
         <p className="text-[10px] tracking-[0.35em] text-black/55 md:text-xs">
           {MODE_LABEL[mode]}　{toKanji(stepIndex + 1)}／{toKanji(total)}
         </p>
-        <h2 className="text-xl tracking-widest md:text-3xl">
+        <h2 className="text-xl tracking-widest md:text-4xl">
           {isShirazu ? "一音を詠む" : label}
         </h2>
         {progressLabel && (
-          <p className="text-[10px] tracking-[0.15em] text-black/50 md:text-xs">
+          <p className="text-[10px] tracking-[0.15em] text-black/50 md:text-sm">
             {progressLabel}
           </p>
         )}
-        <p className="text-[10px] tracking-[0.2em] text-black/45 md:text-xs">
+        {theme.trim() ? (
+          <p className="text-[10px] tracking-[0.2em] text-black/55 md:text-sm">
+            お題：{theme.trim()}
+          </p>
+        ) : null}
+        <p className="text-[10px] tracking-[0.2em] text-black/45 md:text-sm">
           担当：{writer.name}
         </p>
       </header>
 
       {promptLines.length > 0 && (
-        <section className="brush-box min-h-0 overflow-y-auto px-4 py-2.5 md:overflow-visible md:py-3">
+        <section className="brush-box min-h-0 overflow-y-auto px-4 py-2.5 md:overflow-visible md:px-5 md:py-4">
           <p className="mb-1.5 text-xs tracking-widest text-black/50 md:mb-2">
             {isShirazu ? "ここまでの音" : "ここまでの句"}
           </p>
@@ -272,8 +284,8 @@ export function WritingPhase({
       )}
 
       {waitingForPartner || !isMyTurn ? (
-        <section className="brush-box mt-auto px-4 py-6 text-center md:mt-0 md:py-10">
-          <p className="animate-pulse text-base tracking-widest text-black/70 md:text-lg">
+        <section className="brush-box mt-auto px-4 py-6 text-center md:mt-0 md:py-12">
+          <p className="animate-pulse text-base tracking-widest text-black/70 md:text-xl">
             {writer.name} が合わせを考え中…
           </p>
           <p className="mt-2 text-sm text-black/45">
@@ -320,8 +332,10 @@ export function WritingPhase({
               if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === "Enter" && canSubmit) onSubmit();
             }}
-            className={`brush-input w-full px-4 py-3 md:py-3.5 ${
-              isShirazu ? "text-center text-3xl tracking-[0.5em]" : "text-lg"
+            className={`brush-input w-full px-4 py-3 md:py-4 ${
+              isShirazu
+                ? "text-center text-3xl tracking-[0.5em] md:text-4xl"
+                : "text-lg md:text-xl"
             }`}
             autoFocus
           />
@@ -329,7 +343,7 @@ export function WritingPhase({
             type="button"
             disabled={!canSubmit}
             onClick={onSubmit}
-            className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em]"
+            className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
           >
             {submitLabel}
           </button>

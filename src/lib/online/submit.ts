@@ -18,7 +18,9 @@ import type {
   LineTurnState,
   Poem,
   Player,
+  ShirazuRevealState,
   ShirazuTurnState,
+  TurnState,
 } from "@/types/game";
 
 const SHIRAZU_AUTHOR = {
@@ -132,7 +134,7 @@ export function applyShirazuRoundSubmit(args: {
 }): {
   poems: Poem[];
   done: boolean;
-  nextTurn: ShirazuTurnState | null;
+  nextTurn: TurnState | null;
 } {
   const { poems, turn, poemIndex, draft, playerId, playerCount } = args;
 
@@ -163,7 +165,11 @@ export function applyShirazuRoundSubmit(args: {
     (poem) => poemMoraCount(poem) >= SHIRAZU_MORA_PER_POEM,
   );
   if (allComplete) {
-    return { poems: updated, done: true, nextTurn: null };
+    const revealTurn: ShirazuRevealState = {
+      kind: "shirazu_reveal",
+      poemIndex: -1,
+    };
+    return { poems: updated, done: true, nextTurn: revealTurn };
   }
 
   return {

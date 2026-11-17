@@ -10,6 +10,8 @@ export interface RoomRow {
   step_index: number;
   poems: Poem[];
   turn: TurnState | null;
+  /** お題。空文字＝なし */
+  theme: string;
   created_at: string;
 }
 

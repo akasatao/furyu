@@ -47,7 +47,14 @@ export interface ShirazuTurnState {
   submittedIds: string[];
 }
 
-export type TurnState = LineTurnState | ShirazuTurnState;
+/** リレー披露：亭主が句送りする進行 */
+export interface ShirazuRevealState {
+  kind: "shirazu_reveal";
+  /** -1＝披露前、0..n-1＝披露中の首、n＝gallery（一覧） */
+  poemIndex: number;
+}
+
+export type TurnState = LineTurnState | ShirazuTurnState | ShirazuRevealState;
 
 export function isShirazuTurn(
   turn: TurnState | null | undefined,
@@ -55,10 +62,18 @@ export function isShirazuTurn(
   return turn != null && "kind" in turn && turn.kind === "shirazu";
 }
 
+export function isShirazuRevealTurn(
+  turn: TurnState | null | undefined,
+): turn is ShirazuRevealState {
+  return turn != null && "kind" in turn && turn.kind === "shirazu_reveal";
+}
+
 export function isLineTurn(
   turn: TurnState | null | undefined,
 ): turn is LineTurnState {
-  return turn != null && !isShirazuTurn(turn);
+  return (
+    turn != null && !isShirazuTurn(turn) && !isShirazuRevealTurn(turn)
+  );
 }
 
 export interface ModeConfig {

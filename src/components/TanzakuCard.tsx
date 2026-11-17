@@ -2,6 +2,7 @@
 
 import { MODE_LABEL, PART_LABELS, PART_TARGETS } from "@/lib/constants";
 import { formatShirazuLineWithSlots } from "@/lib/shirazu";
+import { shirazuOwnerLabel } from "@/lib/utils";
 import type { Poem } from "@/types/game";
 
 /** 一文字あたりの表示時間（全句で同じ速度） */
@@ -17,6 +18,8 @@ interface TanzakuCardProps {
   still?: boolean;
   /** false のあいだは短冊枠だけ出し、文字は隠したまま */
   writing?: boolean;
+  /** 閲覧者。自分の句なら「あなたの句」 */
+  viewerId?: string | null;
 }
 
 export function TanzakuCard({
@@ -24,10 +27,11 @@ export function TanzakuCard({
   anonymous = false,
   still = false,
   writing = true,
+  viewerId = null,
 }: TanzakuCardProps) {
   const labels = PART_LABELS[poem.mode];
   const isShirazu = poem.mode === "shirazu";
-  const ownerLabel = poem.ownerName ? `${poem.ownerName}の句` : null;
+  const ownerLabel = shirazuOwnerLabel(poem, viewerId);
   const showAnonymous = (anonymous || isShirazu) && !ownerLabel;
   /** キャプチャ時は常に全文。それ以外は writing が立つまで実字を出さない */
   const showText = still || writing;
@@ -45,33 +49,44 @@ export function TanzakuCard({
 
   const totalWriteMs = delayMs;
 
+  const ownerCornerClass =
+    "pointer-events-none absolute text-[10px] leading-relaxed tracking-[0.2em] text-black/55 [writing-mode:vertical-rl] md:text-sm md:tracking-[0.25em]";
+
   return (
     <article
-      className="tanzaku relative flex flex-col items-center px-3 py-5"
+      className="tanzaku relative flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[22rem] md:px-5 md:py-8"
       data-write-ms={still ? undefined : totalWriteMs}
     >
       <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
       {ownerLabel ? (
-        <p className="absolute top-3 right-3 max-w-[7rem] text-right text-[10px] leading-snug tracking-wider text-black/55 md:text-xs">
-          {ownerLabel}
+        <>
+          <p className={`${ownerCornerClass} top-3 right-2 md:top-4 md:right-3`}>
+            {ownerLabel}
+          </p>
+          <p
+            className={`${ownerCornerClass} bottom-3 left-2 md:bottom-4 md:left-3`}
+          >
+            {ownerLabel}
+          </p>
+        </>
+      ) : (
+        <p className="mb-2 text-sm tracking-[0.35em] text-black/45 md:mb-4 md:text-xl">
+          {still
+            ? "風流オンライン"
+            : MODE_LABEL[isShirazu ? "haiku" : poem.mode]}
         </p>
-      ) : null}
-      <p className="mb-2 text-sm tracking-[0.35em] text-black/45 md:text-base">
-        {still
-          ? "風流オンライン"
-          : MODE_LABEL[isShirazu ? "haiku" : poem.mode]}
-      </p>
-      <div className="flex min-h-[220px] items-center justify-center py-3">
+      )}
+      <div className="flex min-h-[220px] items-center justify-center py-3 md:min-h-[340px] md:py-5">
         {showText ? (
           <p
             key="writing"
-            className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl]"
+            className="text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[2rem] md:leading-[2.15] md:tracking-[0.4em]"
             lang="ja"
           >
             {poem.lines.map((line, i) => {
               const isLast = i === poem.lines.length - 1;
               const offset =
-                i === 0 ? "" : isLast ? "mt-10" : "mt-4";
+                i === 0 ? "" : isLast ? "mt-10 md:mt-14" : "mt-4 md:mt-6";
               return (
                 <span
                   key={i}
@@ -93,13 +108,13 @@ export function TanzakuCard({
         ) : showShirazuSlots ? (
           <p
             key="slots"
-            className="text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl]"
+            className="text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl] md:text-[2rem] md:leading-[2.15] md:tracking-[0.4em]"
             lang="ja"
           >
             {PART_TARGETS.shirazu.map((target, i) => {
               const isLast = i === PART_TARGETS.shirazu.length - 1;
               const offset =
-                i === 0 ? "" : isLast ? "mt-10" : "mt-4";
+                i === 0 ? "" : isLast ? "mt-10 md:mt-14" : "mt-4 md:mt-6";
               return (
                 <span key={i} className={`${offset} block`.trim()}>
                   {formatShirazuLineWithSlots("", target)}
@@ -109,19 +124,19 @@ export function TanzakuCard({
           </p>
         ) : null}
       </div>
-      <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-2 text-center text-[10px] leading-relaxed tracking-wider text-black/50">
-        {ownerLabel ? (
-          <span className="block">{ownerLabel}</span>
-        ) : showAnonymous ? (
-          <span className="block">{MODE_LABEL.shirazu}</span>
-        ) : (
-          poem.lines.map((line, i) => (
-            <span key={i} className="block">
-              {labels[i]}：{line?.authorName ?? "—"}
-            </span>
-          ))
-        )}
-      </p>
+      {!ownerLabel && (
+        <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-2 text-center text-[10px] leading-relaxed tracking-wider text-black/50 md:mt-2 md:max-w-[18rem] md:pt-3 md:text-sm">
+          {showAnonymous ? (
+            <span className="block">{MODE_LABEL.shirazu}</span>
+          ) : (
+            poem.lines.map((line, i) => (
+              <span key={i} className="block">
+                {labels[i]}：{line?.authorName ?? "—"}
+              </span>
+            ))
+          )}
+        </p>
+      )}
     </article>
   );
 }

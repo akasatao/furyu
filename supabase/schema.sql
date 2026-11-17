@@ -12,8 +12,13 @@ create table if not exists public.rooms (
   step_index int not null default 0,
   poems jsonb not null default '[]'::jsonb,
   turn jsonb,
+  theme text not null default '',
   created_at timestamptz not null default now()
 );
+
+-- 既存 DB 向け（未追加なら実行）
+alter table public.rooms
+  add column if not exists theme text not null default '';
 
 create table if not exists public.room_players (
   id uuid primary key default gen_random_uuid(),

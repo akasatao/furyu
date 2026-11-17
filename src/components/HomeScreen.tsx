@@ -2,26 +2,38 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { TanzakuCard } from "@/components/TanzakuCard";
 import {
   MODE_LABEL,
   modeAllowsSolo,
   PLAYER_COUNT_RANGE,
+  THEME_MAX_LENGTH,
+  THEME_PROMPTS,
 } from "@/lib/constants";
-import { normalizeRoomCode } from "@/lib/utils";
+import {
+  historyEntryToPoem,
+  type PoemHistoryEntry,
+} from "@/lib/online/poem-history";
+import { normalizeRoomCode, shirazuOwnerLabel, toKanji } from "@/lib/utils";
 import type { VerseMode } from "@/types/game";
 
-export type HomeStep = "mode" | "setup";
+export type HomeStep = "mode" | "theme" | "setup" | "history";
 
 interface HomeScreenProps {
   nickname: string;
   onNicknameChange: (value: string) => void;
+  poemHistory?: PoemHistoryEntry[];
+  myId?: string;
   mode: VerseMode;
+  theme?: string;
+  onThemeChange?: (value: string) => void;
   playerCount: number;
   onModeChange: (mode: VerseMode) => void;
   onPlayerCountChange: (count: number) => void;
   onCreateRoom: (
     count: number,
     verseMode?: VerseMode,
+    theme?: string,
   ) => void | Promise<void>;
   onJoinRoom: (code: string) => void;
   /** ロビーから戻ったときの初期画面 */
@@ -46,10 +58,25 @@ function sleep(ms: number) {
   });
 }
 
+function formatHistoryDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function HomeScreen({
   nickname,
   onNicknameChange,
+  poemHistory = [],
+  myId,
   mode,
+  theme = "",
+  onThemeChange,
   playerCount,
   onModeChange,
   onPlayerCountChange,
@@ -65,6 +92,7 @@ export function HomeScreen({
   const [joinError, setJoinError] = useState("");
   /** 日本語IME変換中は正規化しない（英数入力の二重化・崩れ防止） */
   const [joinComposing, setJoinComposing] = useState(false);
+  const [themeDraft, setThemeDraft] = useState(theme);
   const [pressedChoice, setPressedChoice] = useState<
     "solo" | "multi" | "join" | VerseMode | null
   >(null);
@@ -74,6 +102,7 @@ export function HomeScreen({
   const rootRef = useRef<HTMLDivElement>(null);
   const joinInputRef = useRef<HTMLInputElement>(null);
   const nicknameInputRef = useRef<HTMLInputElement>(null);
+  const themeInputRef = useRef<HTMLInputElement>(null);
   const blurTimerRef = useRef<number | null>(null);
   const viewportHeightRef = useRef(0);
 
@@ -199,21 +228,43 @@ export function HomeScreen({
   const handleSelectMode = (next: VerseMode) => {
     if (isLocked) return;
     onModeChange(next);
-
-    // リレーで風流は複数人専用 → GameApp 側の白フェードでロビーへ
-    if (!modeAllowsSolo(next)) {
-      const max = PLAYER_COUNT_RANGE[next].max;
-      onPlayerCountChange(max);
-      void onCreateRoom(max, next);
-      return;
-    }
-
-    void goToStep("setup");
+    setThemeDraft("");
+    onThemeChange?.("");
+    void goToStep("theme");
   };
 
   const handleBackToMode = () => {
     setPressedChoice(null);
+    setThemeDraft("");
+    onThemeChange?.("");
     void goToStep("mode");
+  };
+
+  const pickRandomTheme = () => {
+    if (THEME_PROMPTS.length === 0) return;
+    let next = THEME_PROMPTS[Math.floor(Math.random() * THEME_PROMPTS.length)];
+    if (THEME_PROMPTS.length > 1) {
+      let guard = 0;
+      while (next === themeDraft && guard < 8) {
+        next = THEME_PROMPTS[Math.floor(Math.random() * THEME_PROMPTS.length)];
+        guard += 1;
+      }
+    }
+    setThemeDraft(next);
+  };
+
+  const handleConfirmTheme = () => {
+    if (isLocked) return;
+    const next = themeDraft.trim().slice(0, THEME_MAX_LENGTH);
+    setThemeDraft(next);
+    onThemeChange?.(next);
+    if (modeAllowsSolo(mode)) {
+      void goToStep("setup");
+      return;
+    }
+    const max = PLAYER_COUNT_RANGE[mode].max;
+    onPlayerCountChange(max);
+    void onCreateRoom(max, mode, next);
   };
 
   const pressChoice = (choice: "solo" | "multi" | "join" | VerseMode) => {
@@ -251,10 +302,10 @@ export function HomeScreen({
   return (
     <div
       ref={rootRef}
-      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-x-hidden bg-white md:max-w-lg md:min-h-[36rem] md:overflow-hidden ${
-        inputFocused
-          ? "overflow-y-auto overscroll-x-none overscroll-y-contain touch-pan-y"
-          : "overflow-hidden"
+      className={`relative mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-x-hidden bg-white md:max-w-2xl md:min-h-[42rem] ${
+        inputFocused || step === "history"
+          ? "overflow-y-auto overscroll-x-none overscroll-y-contain touch-pan-y md:overflow-y-auto"
+          : "overflow-hidden md:overflow-hidden"
       }`}
     >
       <div
@@ -265,7 +316,11 @@ export function HomeScreen({
             ? inputFocused
               ? "justify-start gap-2 pb-4 md:justify-start md:gap-6"
               : "justify-center gap-3 md:justify-start md:gap-6"
-            : "gap-4"
+            : step === "history"
+              ? "gap-3 overflow-y-auto overscroll-contain pb-4"
+              : step === "theme"
+                ? "gap-4"
+                : "gap-4"
         }`}
       >
         {step === "mode" ? (
@@ -277,13 +332,13 @@ export function HomeScreen({
             >
               <hr className="brush-line mx-auto w-10 md:w-14" />
               <h1
-                className={`tracking-[0.2em] md:text-5xl ${
+                className={`tracking-[0.2em] md:text-6xl ${
                   inputFocused ? "text-2xl" : "text-3xl"
                 }`}
               >
                 風流
                 <span
-                  className={`mt-0.5 block tracking-[0.35em] text-black/55 md:mt-1 md:text-xl ${
+                  className={`mt-0.5 block tracking-[0.35em] text-black/55 md:mt-1 md:text-2xl ${
                     inputFocused ? "text-sm" : "text-base"
                   }`}
                 >
@@ -315,7 +370,7 @@ export function HomeScreen({
                   onFocus={() => handleInputFocus(false)}
                   onBlur={handleInputBlur}
                   onChange={(e) => onNicknameChange(e.target.value)}
-                  className="brush-input w-full px-4 py-2.5 text-base md:py-3"
+                  className="brush-input w-full px-4 py-2.5 text-base md:py-3.5 md:text-lg"
                 />
               </label>
             </form>
@@ -346,7 +401,7 @@ export function HomeScreen({
                     onPointerCancel={releaseChoice}
                     onPointerLeave={releaseChoice}
                     aria-pressed={pressedChoice === m}
-                    className={`brush-btn-outline w-full tracking-[0.35em] md:py-4 md:text-xl ${
+                    className={`brush-btn-outline w-full tracking-[0.35em] md:py-5 md:text-2xl ${
                       inputFocused
                         ? "px-4 py-2.5 text-base"
                         : "px-4 py-3.5 text-lg"
@@ -397,7 +452,7 @@ export function HomeScreen({
                     }
                     setJoinCode(normalizeRoomCode(value));
                   }}
-                  className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em]"
+                  className="brush-input min-w-0 flex-1 px-3 py-2.5 font-mono tracking-[0.2em] md:py-3.5 md:text-lg"
                 />
                 <button
                   type="submit"
@@ -407,7 +462,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "join"}
-                  className={`brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest ${
+                  className={`brush-btn shrink-0 px-4 py-2.5 text-sm tracking-widest md:px-5 md:py-3.5 md:text-base ${
                     pressedChoice === "join" ? "is-pressed" : ""
                   }`}
                 >
@@ -418,9 +473,21 @@ export function HomeScreen({
                 <p className="mt-2 text-xs underline">{joinError}</p>
               )}
             </div>
+
+            {poemHistory.length > 0 && (
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => {
+                  void goToStep("history");
+                }}
+                className="brush-btn-outline w-full shrink-0 px-4 py-3 text-sm tracking-[0.35em] md:py-3.5 md:text-base"
+              >
+                今まで詠んだ句（{toKanji(poemHistory.length)}）
+              </button>
+            )}
           </>
-        ) : (
-          /* 一人／複数の確認画面（俳句・短歌）— 本体は画面中央 */
+        ) : step === "theme" ? (
           <section className="relative flex min-h-0 flex-1 flex-col">
             <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-1 py-1">
               <button
@@ -431,17 +498,127 @@ export function HomeScreen({
               >
                 ← 戻る
               </button>
-              <p className="text-xl tracking-[0.35em] text-black/55 md:text-2xl">
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
+                {MODE_LABEL[mode]}
+              </p>
+              <span className="w-12" aria-hidden />
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 px-1 py-4 md:gap-6">
+              <header className="space-y-1 text-center">
+                <h2 className="text-3xl tracking-[0.35em] md:text-5xl">お題</h2>
+                <p className="text-sm tracking-widest text-black/45">
+                  空欄のまま進んでも構いません
+                </p>
+              </header>
+
+              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
+                <input
+                  ref={themeInputRef}
+                  type="text"
+                  value={themeDraft}
+                  maxLength={THEME_MAX_LENGTH}
+                  placeholder="例：春の雨"
+                  enterKeyHint="done"
+                  onFocus={() => handleInputFocus(false)}
+                  onBlur={handleInputBlur}
+                  onChange={(e) => setThemeDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                    if (e.key === "Enter") handleConfirmTheme();
+                  }}
+                  className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-4 md:text-2xl"
+                />
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={pickRandomTheme}
+                  className="brush-btn-outline w-full px-4 py-3 text-sm tracking-[0.35em] md:py-3.5 md:text-base"
+                >
+                  ランダムなお題
+                </button>
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={handleConfirmTheme}
+                  className="brush-btn w-full px-4 py-4 text-lg tracking-[0.3em] md:py-5 md:text-xl"
+                >
+                  このお題で進む
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : step === "history" ? (
+          <section className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-1">
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => {
+                  void goToStep("mode");
+                }}
+                className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+              >
+                ← 戻る
+              </button>
+              <h2 className="text-lg tracking-[0.35em] md:text-2xl">
+                今まで詠んだ句
+              </h2>
+              <span className="w-12" aria-hidden />
+            </div>
+            <div className="flex flex-col items-center gap-8 pb-4">
+              {poemHistory.map((entry) => {
+                const poem = historyEntryToPoem(entry);
+                const title =
+                  poem.mode === "shirazu"
+                    ? (shirazuOwnerLabel(poem, myId) ?? MODE_LABEL.shirazu)
+                    : MODE_LABEL[poem.mode];
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex w-full max-w-[15rem] flex-col items-center gap-2 md:max-w-[18rem]"
+                  >
+                    <p className="text-center text-xs tracking-widest text-black/45">
+                      {formatHistoryDate(entry.savedAt)}
+                      {title ? `　${title}` : ""}
+                      {entry.theme ? `　お題：${entry.theme}` : ""}
+                    </p>
+                    <TanzakuCard
+                      poem={poem}
+                      still
+                      anonymous={poem.mode === "shirazu"}
+                      viewerId={myId}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : (
+          /* 一人／複数の確認画面（俳句・短歌）— 本体は画面中央 */
+          <section className="relative flex min-h-0 flex-1 flex-col">
+            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-1 py-1">
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => {
+                  void goToStep("theme");
+                }}
+                className="text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+              >
+                ← 戻る
+              </button>
+              <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
                 {MODE_LABEL[mode]}
               </p>
               <span className="w-12" aria-hidden />
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-1 py-4">
-              <h2 className="text-center text-3xl tracking-[0.35em] md:text-4xl">
+              <h2 className="text-center text-3xl tracking-[0.35em] md:text-5xl">
                 どう詠む？
               </h2>
-              <div className="flex w-full max-w-md flex-col gap-3">
+              <div className="flex w-full max-w-md flex-col gap-3 md:max-w-lg md:gap-4">
                 <button
                   type="button"
                   disabled={isLocked}
@@ -451,7 +628,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "solo"}
-                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-6 md:text-3xl ${
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-7 md:text-4xl ${
                     pressedChoice === "solo" ? "is-pressed" : ""
                   }`}
                 >
@@ -466,7 +643,7 @@ export function HomeScreen({
                   onPointerCancel={releaseChoice}
                   onPointerLeave={releaseChoice}
                   aria-pressed={pressedChoice === "multi"}
-                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-6 md:text-3xl ${
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-7 md:text-4xl ${
                     pressedChoice === "multi" ? "is-pressed" : ""
                   }`}
                 >

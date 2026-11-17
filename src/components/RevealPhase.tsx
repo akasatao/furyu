@@ -1,207 +1,307 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  estimateTanzakuWriteMs,
-  TanzakuCard,
-} from "@/components/TanzakuCard";
+import { TanzakuCard } from "@/components/TanzakuCard";
 import { MODE_LABEL } from "@/lib/constants";
 import { captureElementPng, downloadPngDataUrl } from "@/lib/export-tanzaku";
-import { toKanji } from "@/lib/utils";
+import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
 import type { Poem } from "@/types/game";
 
-/** 「○○の句」タイトルの表示時間 */
-const OWNER_TITLE_MS = 1600;
-/** 書き終わり後、次の首へ行くまでの間 */
-const BETWEEN_POEMS_MS = 700;
-
-type ShirazuRevealStage =
-  | { kind: "title"; index: number }
-  | { kind: "write"; index: number }
-  | { kind: "gallery" };
+/** タイトル＋空短冊を出してから書き始めるまでの間 */
+const BEFORE_WRITE_MS = 600;
 
 interface RevealPhaseProps {
   poems: Poem[];
+  theme?: string;
   onRematch: () => void;
   onHome: () => void;
   canRematch?: boolean;
+  /** 亭主が部屋に残っている（もう一度待ち表示の可否） */
+  hostPresent?: boolean;
   isSolo?: boolean;
   /** false のあいだは短冊枠のみ。true になってから文字の書き出し開始 */
   revealReady?: boolean;
+  /**
+   * リレー披露の同期インデックス。
+   * -1＝披露前、0..n-1＝披露中、n＝一覧。null＝従来フォールバック（一覧）。
+   */
+  revealPoemIndex?: number | null;
+  isHost?: boolean;
+  onAdvanceReveal?: () => void;
+  advancing?: boolean;
+  myId?: string;
 }
 
 export function RevealPhase({
   poems,
+  theme = "",
   onRematch,
   onHome,
   canRematch = true,
+  hostPresent = true,
   isSolo = false,
   revealReady = false,
+  revealPoemIndex = null,
+  isHost = false,
+  onAdvanceReveal,
+  advancing = false,
+  myId,
 }: RevealPhaseProps) {
   const isShirazu = poems[0]?.mode === "shirazu";
-  const captureRef = useRef<HTMLDivElement>(null);
+  const bulkCaptureRef = useRef<HTMLDivElement>(null);
+  const poemCaptureRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const [shareOpen, setShareOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [shareFilename, setShareFilename] = useState("風流_句.png");
   const [busy, setBusy] = useState(false);
+  const [sharingPoemId, setSharingPoemId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [shirazuStage, setShirazuStage] = useState<ShirazuRevealStage | null>(
-    null,
-  );
+  const [presentWriting, setPresentWriting] = useState(false);
+
+  const poemCount = poems.length;
+  /** 披露前は revealReady を待たず待ち画面へ（フェード開け時の全員短冊チラつき防止） */
+  const waitingToStart =
+    isShirazu && revealPoemIndex != null && revealPoemIndex < 0;
+  const presentIndex =
+    isShirazu &&
+    !waitingToStart &&
+    revealPoemIndex != null &&
+    revealPoemIndex >= 0 &&
+    revealPoemIndex < poemCount
+      ? revealPoemIndex
+      : null;
+  const presentPoem = presentIndex != null ? poems[presentIndex] : null;
+  const showGallery =
+    isShirazu &&
+    !waitingToStart &&
+    presentIndex == null &&
+    (revealReady ||
+      (revealPoemIndex != null && revealPoemIndex >= poemCount));
+  const showActions = !isShirazu || showGallery;
 
   useEffect(() => {
-    if (!isShirazu || !revealReady || poems.length === 0) {
-      setShirazuStage(null);
+    if (presentIndex == null) {
+      setPresentWriting(false);
       return;
     }
+    setPresentWriting(false);
+    const timer = window.setTimeout(() => {
+      setPresentWriting(true);
+    }, BEFORE_WRITE_MS);
+    return () => window.clearTimeout(timer);
+  }, [presentIndex]);
 
-    let cancelled = false;
-    const timers: number[] = [];
-    const wait = (ms: number) =>
-      new Promise<void>((resolve) => {
-        timers.push(window.setTimeout(resolve, ms));
-      });
-
-    const run = async () => {
-      for (let i = 0; i < poems.length; i += 1) {
-        if (cancelled) return;
-        setShirazuStage({ kind: "title", index: i });
-        await wait(OWNER_TITLE_MS);
-        if (cancelled) return;
-        setShirazuStage({ kind: "write", index: i });
-        await wait(estimateTanzakuWriteMs(poems[i]) + BETWEEN_POEMS_MS);
+  const openSharePreview = useCallback(
+    async (element: HTMLElement | null, filename: string) => {
+      if (!element || busy) return;
+      setBusy(true);
+      setErrorMessage("");
+      try {
+        await new Promise((r) => window.setTimeout(r, 50));
+        const url = await captureElementPng(element);
+        setPreviewUrl(url);
+        setShareFilename(filename);
+        setShareOpen(true);
+      } catch {
+        setErrorMessage("画像を作れませんでした。もう一度試してください。");
+      } finally {
+        setBusy(false);
+        setSharingPoemId(null);
       }
-      if (cancelled) return;
-      setShirazuStage({ kind: "gallery" });
-    };
+    },
+    [busy],
+  );
 
-    void run();
-    return () => {
-      cancelled = true;
-      for (const id of timers) window.clearTimeout(id);
-    };
-  }, [isShirazu, revealReady, poems]);
+  const handleOpenBulkShare = useCallback(async () => {
+    const label =
+      MODE_LABEL[poems[0]?.mode === "shirazu" ? "haiku" : poems[0].mode];
+    await openSharePreview(bulkCaptureRef.current, `風流_${label}.png`);
+  }, [openSharePreview, poems]);
 
-  const handleOpenShare = useCallback(async () => {
-    if (!captureRef.current || busy) return;
-    setBusy(true);
-    setErrorMessage("");
-    try {
-      await new Promise((r) => window.setTimeout(r, 50));
-      const url = await captureElementPng(captureRef.current);
-      setPreviewUrl(url);
-      setShareOpen(true);
-    } catch {
-      setErrorMessage("画像を作れませんでした。もう一度試してください。");
-    } finally {
-      setBusy(false);
-    }
-  }, [busy]);
+  const handleOpenPoemShare = useCallback(
+    async (poem: Poem) => {
+      setSharingPoemId(poem.id);
+      const owner = shirazuOwnerLabel(poem, myId) ?? "句";
+      const el = poemCaptureRefs.current.get(poem.id) ?? null;
+      await openSharePreview(el, `風流_${owner}.png`);
+    },
+    [openSharePreview, myId],
+  );
 
   const handleSave = () => {
     if (!previewUrl) return;
-    const label =
-      MODE_LABEL[poems[0]?.mode === "shirazu" ? "haiku" : poems[0].mode];
-    downloadPngDataUrl(previewUrl, `風流_${label}.png`);
+    downloadPngDataUrl(previewUrl, shareFilename);
   };
 
   const handleCloseShare = () => {
     setShareOpen(false);
   };
 
-  const showActions = !isShirazu || shirazuStage?.kind === "gallery";
-
-  const ownerTitle =
-    isShirazu && shirazuStage?.kind === "title"
-      ? `${poems[shirazuStage.index]?.ownerName ?? "名無し"}の句`
-      : null;
-
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col items-center gap-3 md:flex-none md:gap-5">
+    <div className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col items-center gap-3 md:max-w-3xl md:flex-none md:gap-8">
       <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
         <p className="text-xs tracking-[0.35em] text-black/50">披露</p>
-        <h2 className="text-xl tracking-widest md:text-3xl">
+        <h2 className="text-xl tracking-widest md:text-4xl">
           {isShirazu
-            ? shirazuStage?.kind === "gallery"
+            ? showGallery
               ? `${MODE_LABEL.shirazu}・${toKanji(poems.length)}首が完成`
               : MODE_LABEL.shirazu
             : `${MODE_LABEL[poems[0].mode]}が完成`}
         </h2>
+        {theme.trim() ? (
+          <p className="text-sm tracking-[0.2em] text-black/55 md:text-base">
+            お題：{theme.trim()}
+          </p>
+        ) : null}
       </header>
 
       {isShirazu ? (
         <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto md:flex-none md:overflow-visible">
-          {ownerTitle && (
-            <p className="flex flex-1 items-center justify-center text-2xl tracking-[0.35em] md:text-4xl">
-              {ownerTitle}
-            </p>
-          )}
-
-          {shirazuStage?.kind === "write" && (
-            <div className="flex w-full max-w-[15rem] flex-1 flex-col justify-center">
-              <TanzakuCard
-                key={`write-${poems[shirazuStage.index]?.id}-${shirazuStage.index}`}
-                poem={poems[shirazuStage.index]}
-                anonymous
-                writing
-              />
+          {waitingToStart && (
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 md:gap-6">
+              <p className="text-center text-base tracking-[0.35em] text-black/55 md:text-xl">
+                {`${toKanji(poemCount)}首がそろいました`}
+              </p>
+              {isHost && onAdvanceReveal ? (
+                <button
+                  type="button"
+                  disabled={advancing}
+                  onClick={onAdvanceReveal}
+                  className="brush-btn w-full max-w-[15rem] px-4 py-3 text-base tracking-[0.25em] md:max-w-[22rem] md:py-4 md:text-lg"
+                >
+                  {advancing ? "進め中…" : "披露する"}
+                </button>
+              ) : (
+                <p className="text-center text-xl tracking-[0.2em] text-black/55 md:text-3xl">
+                  亭主が披露するのを待っています
+                </p>
+              )}
             </div>
           )}
 
-          {shirazuStage?.kind === "gallery" && (
-            <div className="flex w-full flex-col items-center gap-4 md:gap-6">
+          {presentPoem && presentIndex != null && (
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 md:gap-6">
+              <p className="text-center text-2xl tracking-[0.35em] md:text-5xl">
+                {shirazuOwnerLabel(presentPoem, myId) ?? "名無しの句"}
+              </p>
+              <div className="w-full max-w-[15rem] md:max-w-[22rem]">
+                <TanzakuCard
+                  key={`present-${presentPoem.id}-${presentIndex}-${presentWriting}`}
+                  poem={presentPoem}
+                  anonymous
+                  writing={presentWriting}
+                  viewerId={myId}
+                />
+              </div>
+              {isHost && onAdvanceReveal ? (
+                <button
+                  type="button"
+                  disabled={advancing}
+                  onClick={onAdvanceReveal}
+                  className="brush-btn w-full max-w-[15rem] px-4 py-3 text-base tracking-[0.25em] md:max-w-[22rem] md:py-4 md:text-lg"
+                >
+                  {advancing
+                    ? "進め中…"
+                    : presentIndex >= poemCount - 1
+                      ? "結果を見る"
+                      : "次の人へ"}
+                </button>
+              ) : (
+                <p className="text-center text-xl tracking-[0.2em] text-black/55 md:text-3xl">
+                  {presentIndex >= poemCount - 1
+                    ? "亭主が結果を出すのを待っています"
+                    : "亭主が次へ進めるのを待っています"}
+                </p>
+              )}
+            </div>
+          )}
+
+          {showGallery && (
+            <div className="flex w-full flex-col items-center gap-6 md:gap-10">
               {poems.map((poem) => (
-                <div key={poem.id} className="w-full max-w-[15rem] shrink-0">
-                  <TanzakuCard poem={poem} anonymous still />
+                <div
+                  key={poem.id}
+                  className="flex w-full max-w-[15rem] shrink-0 flex-col items-center gap-2 md:max-w-[22rem]"
+                >
+                  <TanzakuCard
+                    poem={poem}
+                    anonymous
+                    still
+                    viewerId={myId}
+                  />
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      void handleOpenPoemShare(poem);
+                    }}
+                    className="brush-btn-outline w-full px-4 py-2.5 text-xs tracking-widest text-black/55"
+                  >
+                    {busy && sharingPoemId === poem.id
+                      ? "画像を用意中…"
+                      : "句をシェアする"}
+                  </button>
                 </div>
               ))}
             </div>
           )}
 
-          {!revealReady && (
-            <div className="flex w-full flex-col items-center gap-4 md:gap-6">
-              {poems.map((poem) => (
-                <div key={poem.id} className="w-full max-w-[15rem] shrink-0">
-                  <TanzakuCard poem={poem} anonymous writing={false} />
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       ) : (
         <div
           className={`flex min-h-0 w-full flex-1 overflow-y-auto md:flex-none md:overflow-visible ${
             poems.length > 1
-              ? "flex-col items-center gap-4 md:gap-6"
-              : "max-w-[15rem] justify-center"
+              ? "flex-col items-center gap-4 md:gap-10"
+              : "max-w-[15rem] justify-center md:max-w-[22rem]"
           }`}
         >
           {poems.map((poem) => (
-            <div key={poem.id} className="w-full max-w-[15rem] shrink-0">
+            <div
+              key={poem.id}
+              className="w-full max-w-[15rem] shrink-0 md:max-w-[22rem]"
+            >
               <TanzakuCard poem={poem} writing={revealReady} />
             </div>
           ))}
         </div>
       )}
 
-      {/* キャプチャ用：画面外の完成形短冊 */}
+      {/* キャプチャ用：俳句・短歌の一括／リレーは首ごと */}
       <div
         aria-hidden
         className="pointer-events-none fixed top-0 -left-[9999px] z-[-1] bg-white p-6"
       >
-        <div
-          ref={captureRef}
-          className={`flex bg-white ${
-            poems.length > 1
-              ? "flex-col items-center gap-6"
-              : "items-center justify-center"
-          }`}
-        >
-          {poems.map((poem) => (
-            <div key={`capture-${poem.id}`} className="w-[15rem]">
-              <TanzakuCard poem={poem} anonymous={isShirazu} still />
+        {!isShirazu && (
+          <div
+            ref={bulkCaptureRef}
+            className={`flex bg-white ${
+              poems.length > 1
+                ? "flex-col items-center gap-6"
+                : "items-center justify-center"
+            }`}
+          >
+            {poems.map((poem) => (
+              <div key={`capture-bulk-${poem.id}`} className="w-[22rem]">
+                <TanzakuCard poem={poem} still />
+              </div>
+            ))}
+          </div>
+        )}
+        {isShirazu &&
+          poems.map((poem) => (
+            <div
+              key={`capture-${poem.id}`}
+              ref={(el) => {
+                poemCaptureRefs.current.set(poem.id, el);
+              }}
+              className="mb-8 w-[22rem] bg-white p-4"
+            >
+              <p className="mb-3 text-center text-lg tracking-[0.35em]">
+                {shirazuOwnerLabel(poem, myId) ?? "名無しの句"}
+              </p>
+              <TanzakuCard poem={poem} anonymous still viewerId={myId} />
             </div>
           ))}
-        </div>
       </div>
 
       {showActions && (
@@ -210,15 +310,15 @@ export function RevealPhase({
             <button
               type="button"
               onClick={onRematch}
-              className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-3.5"
+              className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
             >
               {isSolo ? "もう一度詠む" : "再び宴を開く（もう一度）"}
             </button>
-          ) : (
+          ) : hostPresent ? (
             <p className="py-3 text-center text-sm tracking-widest text-black/45">
               亭主がもう一度開くのを待っています
             </p>
-          )}
+          ) : null}
           <button
             type="button"
             onClick={onHome}
@@ -226,16 +326,18 @@ export function RevealPhase({
           >
             {isSolo ? "ホームへ戻る" : "玄関へ戻る"}
           </button>
-          <button
-            type="button"
-            disabled={busy || (isShirazu && shirazuStage?.kind !== "gallery")}
-            onClick={() => {
-              void handleOpenShare();
-            }}
-            className="brush-btn-outline w-full px-4 py-2.5 text-xs tracking-widest text-black/55"
-          >
-            {busy ? "画像を用意中…" : "句をシェアする"}
-          </button>
+          {!isShirazu && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void handleOpenBulkShare();
+              }}
+              className="brush-btn-outline w-full px-4 py-2.5 text-xs tracking-widest text-black/55"
+            >
+              {busy ? "画像を用意中…" : "句をシェアする"}
+            </button>
+          )}
           {errorMessage && (
             <p className="text-center text-xs underline">{errorMessage}</p>
           )}
