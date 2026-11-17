@@ -142,6 +142,8 @@ export function GameApp() {
     () => {},
   );
   const banishRef = useRef<() => void>(() => {});
+  /** 破門で抜けた人。自主退出のトーストと二重に出さない */
+  const kickedIdsRef = useRef(new Set<string>());
   /** 破門されたときに中央へ大きく出す */
   const [banished, setBanished] = useState(false);
 
@@ -284,6 +286,37 @@ export function GameApp() {
             banishRef.current();
             return;
           }
+
+          // 誰かが抜けたら、エラーと同じ上トーストで知らせる（破門は別文言）
+          const prevMembers = [
+            ...playersRef.current,
+            ...spectatorsRef.current,
+          ];
+          if (
+            self &&
+            prevMembers.some((p) => p.id === self) &&
+            prevMembers.length > 0
+          ) {
+            const nextIds = new Set(
+              [...snapshot.players, ...snapshot.spectators].map((p) => p.id),
+            );
+            const kicked = kickedIdsRef.current;
+            const leavers = prevMembers.filter(
+              (p) =>
+                p.id !== self && !nextIds.has(p.id) && !kicked.has(p.id),
+            );
+            for (const id of [...kicked]) {
+              if (!nextIds.has(id)) kicked.delete(id);
+            }
+            if (leavers.length === 1) {
+              setErrorMessage(`${leavers[0].name}さんが筆を折りました`);
+            } else if (leavers.length > 1) {
+              setErrorMessage(
+                `${leavers.map((p) => `${p.name}さん`).join("、")}が筆を折りました`,
+              );
+            }
+          }
+
           applySnapshot(snapshot);
           // 自分がフェード中でなければ、披露開始をそのまま許可
           if (snapshot.room.phase === "reveal" && !fadingRef.current) {
@@ -309,6 +342,11 @@ export function GameApp() {
           void handOverAndRemove({ roomId: id, leaverId }).catch((error) => {
             setErrorMessage((error as Error).message);
           });
+        },
+        (kickedId, name) => {
+          if (kickedId === myIdRef.current) return;
+          kickedIdsRef.current.add(kickedId);
+          setErrorMessage(`${name}さんは破門されました`);
         },
       );
     },
@@ -637,14 +675,22 @@ export function GameApp() {
     if (!roomId || !myId) return;
     setBusy(true);
     setErrorMessage("");
+    const target =
+      players.find((p) => p.id === targetId) ??
+      spectators.find((p) => p.id === targetId);
     try {
+      kickedIdsRef.current.add(targetId);
       const snapshot = await kickOnlinePlayer({
         roomId,
         hostId: myId,
         targetId,
       });
       applySnapshot(snapshot);
+      if (target) {
+        setErrorMessage(`${target.name}さんは破門されました`);
+      }
     } catch (error) {
+      kickedIdsRef.current.delete(targetId);
       setErrorMessage((error as Error).message || "破門できませんでした。");
     } finally {
       setBusy(false);

@@ -316,7 +316,7 @@ export function RevealPhase({
               onClick={onRematch}
               className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
             >
-              {isSolo ? "もう一度詠む" : "再び宴を開く（もう一度）"}
+              {isSolo ? "もう一度詠む" : "再び宴を開く"}
             </button>
           ) : hostPresent ? (
             <p className="py-3 text-center text-sm tracking-widest text-black/45">

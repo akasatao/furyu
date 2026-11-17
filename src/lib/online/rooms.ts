@@ -601,6 +601,17 @@ export async function kickOnlinePlayer(options: {
     throw new Error("亭主は自分を破門できません。");
   }
 
+  const target =
+    snapshot.players.find((p) => p.id === options.targetId) ??
+    snapshot.spectators.find((p) => p.id === options.targetId);
+  if (!target) return snapshot;
+
+  // 行を消す前に知らせる（自主退出の「筆を折りました」と区別する）
+  await postRoomBroadcast(options.roomId, KICK_EVENT, {
+    playerId: target.id,
+    name: target.name,
+  });
+
   const isSpectator = snapshot.spectators.some(
     (p) => p.id === options.targetId,
   );
@@ -608,10 +619,6 @@ export async function kickOnlinePlayer(options: {
     // 観戦は進行に入っていないので、行を消すだけでよい
     await deletePlayerRow(options.roomId, options.targetId);
     return loadRoomSnapshot(options.roomId);
-  }
-
-  if (!snapshot.players.some((p) => p.id === options.targetId)) {
-    return snapshot;
   }
 
   if (snapshot.room.phase === "lobby") {
@@ -896,6 +903,7 @@ export type RoomSubscription = {
 
 const LEAVE_EVENT = "leave";
 const SYNC_EVENT = "sync";
+const KICK_EVENT = "kick";
 
 /** Realtime の broadcast を REST で送る（購読していなくても送れる） */
 async function postRoomBroadcast(
@@ -932,6 +940,7 @@ export function subscribeOnlineRoom(
   onChange: (snapshot: OnlineRoomSnapshot) => void,
   onError?: (error: Error) => void,
   onLeaveSignal?: (playerId: string) => void,
+  onKickSignal?: (playerId: string, name: string) => void,
 ): RoomSubscription {
   const supabase = getSupabase();
   let alive = true;
@@ -951,6 +960,21 @@ export function subscribeOnlineRoom(
       const playerId = (payload as { playerId?: unknown } | undefined)
         ?.playerId;
       if (alive && typeof playerId === "string") onLeaveSignal?.(playerId);
+    })
+    .on("broadcast", { event: KICK_EVENT }, ({ payload }) => {
+      const body = payload as
+        | { playerId?: unknown; name?: unknown }
+        | undefined;
+      const playerId = body?.playerId;
+      const name = body?.name;
+      if (
+        alive &&
+        typeof playerId === "string" &&
+        typeof name === "string" &&
+        name.trim()
+      ) {
+        onKickSignal?.(playerId, name.trim());
+      }
     })
     .on("broadcast", { event: SYNC_EVENT }, () => {
       void refresh();
