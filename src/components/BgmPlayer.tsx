@@ -1,27 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AUDIO_DEFAULT_VOLUME,
+  AUDIO_MUTE_KEY,
+  AUDIO_VOLUME_KEY,
+  readAudioMuted,
+  readAudioVolume,
+} from "@/lib/audio-prefs";
 
-const MUTE_KEY = "furyu_bgm_muted";
-const VOLUME_KEY = "furyu_bgm_volume";
 const BGM_SRC = "/audio/bgm.wav";
-const DEFAULT_VOLUME = 0.28;
-
-function readMutedPreference(): boolean {
-  if (typeof window === "undefined") return true;
-  const raw = window.localStorage.getItem(MUTE_KEY);
-  if (raw == null) return true;
-  return raw === "1";
-}
-
-function readVolumePreference(): number {
-  if (typeof window === "undefined") return DEFAULT_VOLUME;
-  const raw = window.localStorage.getItem(VOLUME_KEY);
-  if (raw == null) return DEFAULT_VOLUME;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return DEFAULT_VOLUME;
-  return Math.min(1, Math.max(0, n));
-}
 
 function SpeakerIcon({ muted }: { muted: boolean }) {
   return (
@@ -80,13 +68,13 @@ export function BgmPlayer() {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   const [muted, setMuted] = useState(true);
-  const [volume, setVolume] = useState(DEFAULT_VOLUME);
+  const [volume, setVolume] = useState(AUDIO_DEFAULT_VOLUME);
   const [playing, setPlaying] = useState(false);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    setMuted(readMutedPreference());
-    setVolume(readVolumePreference());
+    setMuted(readAudioMuted());
+    setVolume(readAudioVolume());
   }, []);
 
   const applyGain = useCallback((nextMuted: boolean, nextVolume: number) => {
@@ -101,8 +89,8 @@ export function BgmPlayer() {
     let cancelled = false;
     const ctx = new AudioContext();
     const gain = ctx.createGain();
-    const initialMuted = readMutedPreference();
-    const initialVolume = readVolumePreference();
+    const initialMuted = readAudioMuted();
+    const initialVolume = readAudioVolume();
     gain.gain.value = initialMuted ? 0 : initialVolume;
     gain.connect(ctx.destination);
     ctxRef.current = ctx;
@@ -180,7 +168,7 @@ export function BgmPlayer() {
   const toggleMuted = useCallback(() => {
     setMuted((prev) => {
       const next = !prev;
-      window.localStorage.setItem(MUTE_KEY, next ? "1" : "0");
+      window.localStorage.setItem(AUDIO_MUTE_KEY, next ? "1" : "0");
       const ctx = ctxRef.current;
       if (!next && ctx?.state === "suspended") {
         void ctx.resume();
@@ -193,14 +181,14 @@ export function BgmPlayer() {
     (next: number) => {
       const clamped = Math.min(1, Math.max(0, next));
       setVolume(clamped);
-      window.localStorage.setItem(VOLUME_KEY, String(clamped));
+      window.localStorage.setItem(AUDIO_VOLUME_KEY, String(clamped));
       if (clamped > 0 && muted) {
         setMuted(false);
-        window.localStorage.setItem(MUTE_KEY, "0");
+        window.localStorage.setItem(AUDIO_MUTE_KEY, "0");
       }
       if (clamped === 0) {
         setMuted(true);
-        window.localStorage.setItem(MUTE_KEY, "1");
+        window.localStorage.setItem(AUDIO_MUTE_KEY, "1");
       }
       const ctx = ctxRef.current;
       if (clamped > 0 && ctx?.state === "suspended") {
@@ -266,6 +254,7 @@ export function BgmPlayer() {
 
   return (
     <div
+      data-no-select-sound=""
       className="fixed bottom-3 left-3 z-[60] md:bottom-4 md:left-4"
       onMouseEnter={showPanel}
       onMouseLeave={scheduleHide}

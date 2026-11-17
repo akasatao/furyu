@@ -1,8 +1,13 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { MODE_LABEL, ONLINE_MIN_PLAYERS } from "@/lib/constants";
 import { toKanji } from "@/lib/utils";
 import type { Player, VerseMode } from "@/types/game";
+
+function nameInitial(name: string): string {
+  return [...name][0] ?? "？";
+}
 
 interface WaitingLobbyProps {
   mode: VerseMode;
@@ -57,8 +62,8 @@ export function WaitingLobby({
       </div>
 
       <header className="shrink-0 space-y-1.5 text-center">
-        <h2 className="text-2xl tracking-widest md:text-4xl">
-          {hostName ? `${hostName}の和室` : "和室"}
+        <h2 className="mx-auto w-full max-w-full px-1 text-2xl tracking-widest md:text-4xl">
+          <FitText text={hostName ? `${hostName}の和室` : "和室"} minFontPx={14} />
         </h2>
         <p className="text-sm tracking-wider text-black/55">
           {MODE_LABEL[mode]}・{toKanji(players.length)}／{toKanji(maxPlayers)}人
@@ -81,11 +86,13 @@ export function WaitingLobby({
               key={p.id}
               className="flex items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-black text-sm text-white md:h-11 md:w-11 md:text-base">
-                {p.name.slice(0, 1)}
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-black bg-black text-sm text-white md:h-11 md:w-11 md:text-base">
+                {nameInitial(p.name)}
               </span>
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <p className="min-w-0 truncate md:text-lg">{p.name}</p>
+                <div className="min-w-0 flex-1 md:text-lg">
+                  <FitText text={p.name} />
+                </div>
                 {p.isHost && (
                   <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
                     亭主
@@ -116,11 +123,13 @@ export function WaitingLobby({
               key={p.id}
               className="flex items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-white text-sm text-black md:h-11 md:w-11 md:text-base">
-                {p.name.slice(0, 1)}
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-black bg-white text-sm text-black md:h-11 md:w-11 md:text-base">
+                {nameInitial(p.name)}
               </span>
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <p className="min-w-0 truncate md:text-lg">{p.name}</p>
+                <div className="min-w-0 flex-1 md:text-lg">
+                  <FitText text={p.name} />
+                </div>
                 <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
                   観戦
                 </span>

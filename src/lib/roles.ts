@@ -17,6 +17,18 @@ export function assignPartIndexes(
   return assigned;
 }
 
+/** 俳句・短歌の担当順を毎回入れ替える用 */
+export function shufflePlayers<T>(players: T[]): T[] {
+  const next = [...players];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = next[i];
+    next[i] = next[j];
+    next[j] = tmp;
+  }
+  return next;
+}
+
 export function writerForStep(players: Player[], stepIndex: number): Player {
   const writer = players.find((p) => p.partIndexes.includes(stepIndex));
   if (!writer) {

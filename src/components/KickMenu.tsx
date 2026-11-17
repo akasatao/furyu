@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FitText } from "@/components/FitText";
 import type { Player } from "@/types/game";
 
 interface KickMenuProps {
@@ -68,7 +69,9 @@ export function KickMenu({
                     className="flex items-center gap-3 border-2 border-black px-3 py-2"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <p className="min-w-0 truncate">{p.name}</p>
+                      <div className="min-w-0 flex-1">
+                        <FitText text={p.name} />
+                      </div>
                       {watching ? (
                         <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
                           観戦

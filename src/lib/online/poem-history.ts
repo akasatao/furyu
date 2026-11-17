@@ -44,6 +44,13 @@ export function loadPoemHistory(): PoemHistoryEntry[] {
   return readRaw();
 }
 
+/** 履歴から一句消す */
+export function removePoemFromHistory(entryId: string): PoemHistoryEntry[] {
+  const next = readRaw().filter((entry) => entry.id !== entryId);
+  writeRaw(next);
+  return next;
+}
+
 /** 完成した句を履歴へ追記。既に同じ poem.id があれば何もしない */
 export function appendPoemsToHistory(
   poems: Poem[],

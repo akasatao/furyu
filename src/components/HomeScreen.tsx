@@ -15,9 +15,52 @@ import {
   historyEntryToPoem,
   type PoemHistoryEntry,
 } from "@/lib/online/poem-history";
+import { captureElementPng, downloadPngDataUrl } from "@/lib/export-tanzaku";
 import { OpenRoomList } from "@/components/OpenRoomList";
 import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
-import type { VerseMode } from "@/types/game";
+import type { Poem, VerseMode } from "@/types/game";
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="18"
+      aria-hidden
+      className="block"
+    >
+      {/* 横に厚めのゴミ箱：蓋・胴・縦線 */}
+      <path
+        d="M7.5 4.2h9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M4.2 7h15.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7.2 7.2v10.2c0 .9.7 1.6 1.6 1.6h6.4c.9 0 1.6-.7 1.6-1.6V7.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.2 10.2v5.2M13.8 10.2v5.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export type HomeStep = "mode" | "theme" | "setup" | "history" | "rooms";
 
@@ -25,6 +68,7 @@ interface HomeScreenProps {
   nickname: string;
   onNicknameChange: (value: string) => void;
   poemHistory?: PoemHistoryEntry[];
+  onDeletePoemHistory?: (entryId: string) => void;
   myId?: string;
   mode: VerseMode;
   theme?: string;
@@ -76,6 +120,7 @@ export function HomeScreen({
   nickname,
   onNicknameChange,
   poemHistory = [],
+  onDeletePoemHistory,
   myId,
   mode,
   theme = "",
@@ -98,6 +143,13 @@ export function HomeScreen({
   >(null);
   /** キーボード表示中はコンパクト＋スクロールに切替 */
   const [inputFocused, setInputFocused] = useState(false);
+  const poemCaptureRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const [shareOpen, setShareOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [shareFilename, setShareFilename] = useState("風流_句.png");
+  const [shareBusy, setShareBusy] = useState(false);
+  const [sharingPoemId, setSharingPoemId] = useState<string | null>(null);
+  const [shareError, setShareError] = useState("");
   const lockedRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const nicknameInputRef = useRef<HTMLInputElement>(null);
@@ -208,6 +260,40 @@ export function HomeScreen({
       setTransitioning(false);
     }
   };
+
+  const openSharePreview = useCallback(
+    async (element: HTMLElement | null, filename: string) => {
+      if (!element || shareBusy) return;
+      setShareBusy(true);
+      setShareError("");
+      try {
+        await new Promise((r) => window.setTimeout(r, 50));
+        const url = await captureElementPng(element);
+        setPreviewUrl(url);
+        setShareFilename(filename);
+        setShareOpen(true);
+      } catch {
+        setShareError("画像を作れませんでした。もう一度試してください。");
+      } finally {
+        setShareBusy(false);
+        setSharingPoemId(null);
+      }
+    },
+    [shareBusy],
+  );
+
+  const handleOpenHistoryShare = useCallback(
+    async (poem: Poem, entryId: string) => {
+      setSharingPoemId(entryId);
+      const owner =
+        poem.mode === "shirazu"
+          ? (shirazuOwnerLabel(poem, myId) ?? "句")
+          : MODE_LABEL[poem.mode];
+      const el = poemCaptureRefs.current.get(entryId) ?? null;
+      await openSharePreview(el, `風流_${owner}.png`);
+    },
+    [myId, openSharePreview],
+  );
 
   const handleSelectMode = (next: VerseMode) => {
     if (isLocked) return;
@@ -321,6 +407,11 @@ export function HomeScreen({
               <span className="w-12" aria-hidden />
             </div>
             <div className="flex flex-col items-center gap-8 pb-4">
+              {poemHistory.length === 0 ? (
+                <p className="py-8 text-center text-sm tracking-widest text-black/45">
+                  まだ句がありません
+                </p>
+              ) : null}
               {poemHistory.map((entry) => {
                 const poem = historyEntryToPoem(entry);
                 const title =
@@ -343,11 +434,116 @@ export function HomeScreen({
                       anonymous={poem.mode === "shirazu"}
                       viewerId={myId}
                     />
+                    <div className="flex w-full items-stretch gap-2">
+                      <button
+                        type="button"
+                        disabled={isLocked || shareBusy}
+                        onClick={() => {
+                          void handleOpenHistoryShare(poem, entry.id);
+                        }}
+                        className="brush-btn-outline min-w-0 flex-1 px-3 py-2.5 text-xs tracking-widest text-black/55"
+                      >
+                        {shareBusy && sharingPoemId === entry.id
+                          ? "画像を用意中…"
+                          : "句をシェアする"}
+                      </button>
+                      {onDeletePoemHistory ? (
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          aria-label="この句を消す"
+                          onClick={() => {
+                            if (window.confirm("この句を消しますか？")) {
+                              onDeletePoemHistory(entry.id);
+                            }
+                          }}
+                          className="brush-btn-outline flex shrink-0 items-center justify-center px-3 text-black/55"
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })}
             </div>
+            {shareError ? (
+              <p className="text-center text-xs underline">{shareError}</p>
+            ) : null}
           </section>
+
+          {/* キャプチャ用（画面外） */}
+          <div
+            aria-hidden
+            className="pointer-events-none fixed top-0 -left-[9999px] z-[-1] bg-white p-6"
+          >
+            {poemHistory.map((entry) => {
+              const poem = historyEntryToPoem(entry);
+              return (
+                <div
+                  key={`capture-${entry.id}`}
+                  ref={(el) => {
+                    poemCaptureRefs.current.set(entry.id, el);
+                  }}
+                  className="mb-8 w-[22rem] bg-white p-4"
+                >
+                  {poem.mode === "shirazu" ? (
+                    <p className="mb-3 text-center text-lg tracking-[0.35em]">
+                      {shirazuOwnerLabel(poem, myId) ?? "名無しの句"}
+                    </p>
+                  ) : null}
+                  <TanzakuCard
+                    poem={poem}
+                    still
+                    anonymous={poem.mode === "shirazu"}
+                    viewerId={myId}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {shareOpen && previewUrl ? (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="句の画像"
+              onClick={() => setShareOpen(false)}
+            >
+              <div
+                className="brush-box flex w-full max-w-sm flex-col gap-4 bg-white p-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="text-center text-sm tracking-widest text-black/60">
+                  句の画像
+                </p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt="完成した句"
+                  className="mx-auto max-h-[55vh] w-auto max-w-full border-2 border-black bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!previewUrl) return;
+                    downloadPngDataUrl(previewUrl, shareFilename);
+                  }}
+                  className="brush-btn w-full px-4 py-3 text-sm tracking-widest"
+                >
+                  保存する
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShareOpen(false)}
+                  className="brush-btn-outline w-full px-4 py-2.5 text-sm tracking-widest"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <ViewportFit key={step}>
@@ -396,7 +592,6 @@ export function HomeScreen({
                   ref={nicknameInputRef}
                   type="text"
                   value={nickname}
-                  maxLength={12}
                   placeholder="名無しの俳人"
                   enterKeyHint="done"
                   autoComplete="nickname"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FitText } from "@/components/FitText";
 import { MODE_LABEL } from "@/lib/constants";
 import { subscribeOpenRooms } from "@/lib/online/rooms";
 import type { OpenRoomSummary } from "@/lib/online/types";
@@ -105,9 +106,9 @@ export function OpenRoomList({
                       {toKanji(room.playerCount)}／{toKanji(room.maxPlayers)}人
                     </span>
                   </span>
-                  <span className="w-full truncate text-sm tracking-widest text-black/60">
-                    亭主：{room.hostName}
-                  </span>
+                  <div className="w-full min-w-0 text-sm tracking-widest text-black/60">
+                    <FitText text={`亭主：${room.hostName}`} minFontPx={10} />
+                  </div>
                   {room.theme.trim() ? (
                     <span className="w-full truncate text-sm tracking-widest text-black/60">
                       お題：{room.theme.trim()}

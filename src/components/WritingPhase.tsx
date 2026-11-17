@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FitText } from "@/components/FitText";
 import { MODE_LABEL } from "@/lib/constants";
 import {
   clampShirazuDraft,
@@ -240,9 +241,9 @@ export function WritingPhase({
             お題：{theme.trim()}
           </p>
         ) : null}
-        <p className="text-[10px] tracking-[0.2em] text-black/45 md:text-sm">
-          担当：{writer.name}
-        </p>
+        <div className="mx-auto w-full max-w-sm px-2 text-[10px] tracking-[0.2em] text-black/45 md:text-sm">
+          <FitText text={`担当：${writer.name}`} minFontPx={9} />
+        </div>
       </header>
 
       {promptLines.length > 0 && (
@@ -285,9 +286,9 @@ export function WritingPhase({
 
       {waitingForPartner || !isMyTurn ? (
         <section className="brush-box mx-auto mt-auto w-full shrink-0 px-4 py-6 text-center md:mt-auto md:py-[clamp(1.5rem,4dvh,3rem)]">
-          <p className="animate-pulse text-base tracking-widest text-black/70 md:text-[clamp(1rem,2.5dvh,1.25rem)]">
-            {writer.name} が合わせを考え中…
-          </p>
+          <div className="animate-pulse text-base tracking-widest text-black/70 md:text-[clamp(1rem,2.5dvh,1.25rem)]">
+            <FitText text={`${writer.name} が合わせを考え中…`} minFontPx={11} />
+          </div>
           <p className="mt-2 text-sm text-black/45">
             {isShirazu ? "一音を選んでいます" : `${label}を練っています`}
           </p>

@@ -9,7 +9,7 @@ export function loadNickname(): string {
 
 export function saveNickname(value: string): void {
   if (typeof window === "undefined") return;
-  const trimmed = value.trim().slice(0, 12);
+  const trimmed = value.trim();
   if (!trimmed) {
     window.localStorage.removeItem(KEY);
     return;

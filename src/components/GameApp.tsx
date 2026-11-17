@@ -15,9 +15,20 @@ import { APP_VERSION } from "@/lib/app-version";
 import { modeAllowsSolo, THEME_MAX_LENGTH } from "@/lib/constants";
 import { loadNickname, saveNickname } from "@/lib/online/nickname";
 import { getOrCreatePlayerId } from "@/lib/online/player-id";
+import { clearRevealSeen } from "@/lib/reveal-progress";
+import {
+  isBackControl,
+  isKaikaiControl,
+  playBackSound,
+  playBanishSound,
+  playBanishVictimSound,
+  playKaikaiSound,
+  playSelectSound,
+} from "@/lib/select-sound";
 import {
   appendPoemsToHistory,
   loadPoemHistory,
+  removePoemFromHistory,
   type PoemHistoryEntry,
 } from "@/lib/online/poem-history";
 import {
@@ -144,6 +155,11 @@ export function GameApp() {
   const banishRef = useRef<() => void>(() => {});
   /** 破門で抜けた人。自主退出のトーストと二重に出さない */
   const kickedIdsRef = useRef(new Set<string>());
+  /** 執筆→披露の白フェード（購読と提出の二重実行を直列化） */
+  const revealGateRef = useRef<Promise<void> | null>(null);
+  const enterRevealFromWritingRef = useRef<
+    (snapshot: OnlineRoomSnapshot) => Promise<void>
+  >(async () => {});
   /** 破門されたときに中央へ大きく出す */
   const [banished, setBanished] = useState(false);
 
@@ -151,6 +167,30 @@ export function GameApp() {
     setMyId(getOrCreatePlayerId());
     setNickname(loadNickname());
     setPoemHistory(loadPoemHistory());
+  }, []);
+
+  /** ボタン選択は拍子木。戻る系は別の効果音 */
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      // 音量オンオフ／バー操作では効果音を鳴らさない
+      if (target.closest("[data-no-select-sound]")) return;
+      const control = target.closest("button, [role='button']");
+      if (!(control instanceof HTMLElement)) return;
+      if (control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true") {
+        return;
+      }
+      // 開宴はほら貝のみ（拍子木は鳴らさない）
+      if (isKaikaiControl(control)) return;
+      if (isBackControl(control)) playBackSound();
+      else playSelectSound();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
   }, []);
 
   const rememberPoems = useCallback(
@@ -287,26 +327,30 @@ export function GameApp() {
             return;
           }
 
-          // 誰かが抜けたら、エラーと同じ上トーストで知らせる（破門は別文言）
-          const prevMembers = [
-            ...playersRef.current,
-            ...spectatorsRef.current,
-          ];
-          if (
-            self &&
-            prevMembers.some((p) => p.id === self) &&
-            prevMembers.length > 0
-          ) {
-            const nextIds = new Set(
-              [...snapshot.players, ...snapshot.spectators].map((p) => p.id),
+          // 連衆が抜けたら上トースト（観戦の退出は出さない。破門は別文言）
+          const prevPlayers = playersRef.current;
+          const wasPresent =
+            Boolean(self) &&
+            (prevPlayers.some((p) => p.id === self) ||
+              spectatorsRef.current.some((p) => p.id === self));
+          if (self && wasPresent && prevPlayers.length > 0) {
+            const nextPlayerIds = new Set(
+              snapshot.players.map((p) => p.id),
             );
             const kicked = kickedIdsRef.current;
-            const leavers = prevMembers.filter(
+            const leavers = prevPlayers.filter(
               (p) =>
-                p.id !== self && !nextIds.has(p.id) && !kicked.has(p.id),
+                p.id !== self &&
+                !nextPlayerIds.has(p.id) &&
+                !kicked.has(p.id),
             );
             for (const id of [...kicked]) {
-              if (!nextIds.has(id)) kicked.delete(id);
+              if (
+                !nextPlayerIds.has(id) &&
+                !snapshot.spectators.some((p) => p.id === id)
+              ) {
+                kicked.delete(id);
+              }
             }
             if (leavers.length === 1) {
               setErrorMessage(`${leavers[0].name}さんが筆を折りました`);
@@ -317,9 +361,21 @@ export function GameApp() {
             }
           }
 
+          // 執筆中に完成したら、空短冊を出さず白フェードしてから披露へ
+          if (
+            snapshot.room.phase === "reveal" &&
+            phaseRef.current === "writing"
+          ) {
+            void enterRevealFromWritingRef.current(snapshot);
+            return;
+          }
+
           applySnapshot(snapshot);
-          // 自分がフェード中でなければ、披露開始をそのまま許可
-          if (snapshot.room.phase === "reveal" && !fadingRef.current) {
+          if (
+            snapshot.room.phase === "reveal" &&
+            !fadingRef.current &&
+            !revealGateRef.current
+          ) {
             setRevealReady(true);
           }
         },
@@ -442,6 +498,47 @@ export function GameApp() {
     });
     flushSync(() => setRevealReady(true));
   }, []);
+
+  /**
+   * 執筆画面のまま白へ溶かし、開けたあとに空短冊→書き出し。
+   * 提出者の API 応答と Realtime 購読のどちらが先でも、フェードは一度だけ。
+   */
+  const enterRevealFromWriting = useCallback(
+    async (snapshot: OnlineRoomSnapshot) => {
+      const previous = revealGateRef.current;
+      const task = (async () => {
+        if (previous) {
+          try {
+            await previous;
+          } catch {
+            // 先行フェード失敗でも最新スナップショットは反映する
+          }
+        }
+        if (phaseRef.current === "reveal") {
+          applySnapshot(snapshot);
+          return;
+        }
+        const shirazuReveal = isShirazuRevealTurn(snapshot.room.turn);
+        await runWhiteFade(() => {
+          setLocalDraft("");
+          setRevealReady(shirazuReveal);
+          applySnapshot(snapshot);
+        });
+        if (!shirazuReveal) await startRevealWriting();
+      })();
+      revealGateRef.current = task;
+      try {
+        await task;
+      } finally {
+        if (revealGateRef.current === task) revealGateRef.current = null;
+      }
+    },
+    [applySnapshot, runWhiteFade, startRevealWriting],
+  );
+
+  useEffect(() => {
+    enterRevealFromWritingRef.current = enterRevealFromWriting;
+  }, [enterRevealFromWriting]);
 
   /** 一人プレイはネット往復なしで即開始 */
   const startSoloLocal = useCallback(
@@ -662,6 +759,7 @@ export function GameApp() {
       if (ejectLockRef.current || phaseRef.current === "home") return;
       ejectLockRef.current = true;
       clearSubscription();
+      playBanishVictimSound();
       setBanished(true);
       void (async () => {
         await sleep(BANISH_HOLD_MS);
@@ -678,6 +776,8 @@ export function GameApp() {
     const target =
       players.find((p) => p.id === targetId) ??
       spectators.find((p) => p.id === targetId);
+    // 破門ボタン直後・押した本人だけ爆発音
+    playBanishSound();
     try {
       kickedIdsRef.current.add(targetId);
       const snapshot = await kickOnlinePlayer({
@@ -715,6 +815,7 @@ export function GameApp() {
     setErrorMessage("");
     try {
       const snapshot = await startOnlineGame({ roomId, hostId: myId });
+      if (phaseRef.current === "lobby") playKaikaiSound();
       applySnapshot(snapshot);
     } catch (error) {
       setErrorMessage((error as Error).message || "開宴できませんでした。");
@@ -860,16 +961,7 @@ export function GameApp() {
         draft,
       });
       if (snapshot.room.phase === "reveal" && phase === "writing") {
-        const shirazuReveal = isShirazuRevealTurn(snapshot.room.turn);
-        await runWhiteFade(() => {
-          setLocalDraft("");
-          // リレー披露前は即待ち画面。俳句／短歌のみ空枠→書き出し用に false
-          setRevealReady(shirazuReveal);
-          applySnapshot(snapshot);
-        });
-        if (!shirazuReveal) {
-          await startRevealWriting();
-        }
+        await enterRevealFromWriting(snapshot);
       } else {
         applySnapshot(snapshot);
         setLocalDraft("");
@@ -899,6 +991,11 @@ export function GameApp() {
   const handleRematch = async () => {
     // ローカル一人は即リスタート
     if (!roomId && players.length === 1) {
+      clearRevealSeen(
+        poems.length > 0
+          ? `local:${poems.map((p) => p.id).filter(Boolean).join(",")}`
+          : null,
+      );
       startSoloLocal({
         playerId: myId,
         name: displayName,
@@ -911,6 +1008,7 @@ export function GameApp() {
     setBusy(true);
     setErrorMessage("");
     try {
+      clearRevealSeen(roomId);
       const snapshot = await resetRoomToLobby({ roomId, hostId: myId });
       applySnapshot(snapshot);
     } catch (error) {
@@ -1051,6 +1149,9 @@ export function GameApp() {
             nickname={nickname}
             onNicknameChange={handleNicknameChange}
             poemHistory={poemHistory}
+            onDeletePoemHistory={(entryId) => {
+              setPoemHistory(removePoemFromHistory(entryId));
+            }}
             myId={myId}
             mode={mode}
             theme={theme}
@@ -1195,6 +1296,7 @@ export function GameApp() {
             <RevealPhase
               poems={poems}
               theme={theme}
+              roomId={roomId}
               revealReady={revealReady}
               revealPoemIndex={
                 isShirazuRevealTurn(turn) ? turn.poemIndex : null

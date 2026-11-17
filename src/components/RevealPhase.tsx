@@ -1,9 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TanzakuCard } from "@/components/TanzakuCard";
 import { MODE_LABEL } from "@/lib/constants";
 import { captureElementPng, downloadPngDataUrl } from "@/lib/export-tanzaku";
+import {
+  hasLineRevealSeen,
+  hasShirazuRevealStepSeen,
+  markLineRevealSeen,
+  markShirazuRevealStepSeen,
+} from "@/lib/reveal-progress";
 import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
 import type { Poem } from "@/types/game";
 
@@ -13,6 +19,8 @@ const BEFORE_WRITE_MS = 600;
 interface RevealPhaseProps {
   poems: Poem[];
   theme?: string;
+  /** 披露演出の既読に使う（再表示で最初から再生しない） */
+  roomId?: string | null;
   onRematch: () => void;
   onHome: () => void;
   canRematch?: boolean;
@@ -35,6 +43,7 @@ interface RevealPhaseProps {
 export function RevealPhase({
   poems,
   theme = "",
+  roomId = null,
   onRematch,
   onHome,
   canRematch = true,
@@ -59,6 +68,13 @@ export function RevealPhase({
   const [presentWriting, setPresentWriting] = useState(false);
 
   const poemCount = poems.length;
+  /** ソロ披露など roomId が無いときの既読キー */
+  const progressId = useMemo(() => {
+    if (roomId) return roomId;
+    const ids = poems.map((p) => p.id).filter(Boolean);
+    return ids.length > 0 ? `local:${ids.join(",")}` : null;
+  }, [roomId, poems]);
+
   /** 披露前は revealReady を待たず待ち画面へ（フェード開け時の全員短冊チラつき防止） */
   const waitingToStart =
     isShirazu && revealPoemIndex != null && revealPoemIndex < 0;
@@ -78,18 +94,33 @@ export function RevealPhase({
     (revealReady ||
       (revealPoemIndex != null && revealPoemIndex >= poemCount));
   const showActions = !isShirazu || showGallery;
+  const presentAlreadySeen =
+    presentIndex != null &&
+    hasShirazuRevealStepSeen(progressId, presentIndex);
+  const lineAlreadySeen = hasLineRevealSeen(progressId);
 
   useEffect(() => {
     if (presentIndex == null) {
       setPresentWriting(false);
       return;
     }
+    // ノートPC再開などでも、一度見た首は書き出し演出をやり直さない
+    if (hasShirazuRevealStepSeen(progressId, presentIndex)) {
+      setPresentWriting(true);
+      return;
+    }
     setPresentWriting(false);
     const timer = window.setTimeout(() => {
       setPresentWriting(true);
+      markShirazuRevealStepSeen(progressId, presentIndex);
     }, BEFORE_WRITE_MS);
     return () => window.clearTimeout(timer);
-  }, [presentIndex]);
+  }, [presentIndex, progressId]);
+
+  useEffect(() => {
+    if (isShirazu || !revealReady || lineAlreadySeen) return;
+    markLineRevealSeen(progressId);
+  }, [isShirazu, revealReady, lineAlreadySeen, progressId]);
 
   const openSharePreview = useCallback(
     async (element: HTMLElement | null, filename: string) => {
@@ -190,10 +221,11 @@ export function RevealPhase({
               </p>
               <div className="w-full max-w-[15rem] md:max-w-[min(22rem,42dvh)]">
                 <TanzakuCard
-                  key={`present-${presentPoem.id}-${presentIndex}-${presentWriting}`}
+                  key={`present-${presentPoem.id}-${presentIndex}`}
                   poem={presentPoem}
                   anonymous
-                  writing={presentWriting}
+                  still={presentAlreadySeen}
+                  writing={presentAlreadySeen || presentWriting}
                   viewerId={myId}
                 />
               </div>
@@ -264,7 +296,11 @@ export function RevealPhase({
               key={poem.id}
               className="w-full max-w-[15rem] shrink-0 md:max-w-[min(22rem,42dvh)]"
             >
-              <TanzakuCard poem={poem} writing={revealReady} />
+              <TanzakuCard
+                poem={poem}
+                still={lineAlreadySeen}
+                writing={lineAlreadySeen || revealReady}
+              />
             </div>
           ))}
         </div>

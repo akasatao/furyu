@@ -1,6 +1,6 @@
 "use client";
 
-import { assignPartIndexes, writerForStep } from "@/lib/roles";
+import { assignPartIndexes, shufflePlayers, writerForStep } from "@/lib/roles";
 import { getSupabase } from "@/lib/supabase/client";
 import {
   assignShirazuOwners,
@@ -647,12 +647,17 @@ export async function startOnlineGame(options: {
     throw new Error("二人以上揃うまで開宴できません。");
   }
 
-  const count = snapshot.players.length;
+  // 俳句・短歌は入室順のまま上の句・中の句が固定しないよう、開宴のたびに並び替える
+  const orderedPlayers =
+    snapshot.room.mode === "shirazu"
+      ? snapshot.players
+      : shufflePlayers(snapshot.players);
+  const count = orderedPlayers.length;
   const parts = assignPartIndexes(count, snapshot.room.mode);
   const supabase = getSupabase();
 
-  for (let i = 0; i < snapshot.players.length; i += 1) {
-    const player = snapshot.players[i];
+  for (let i = 0; i < orderedPlayers.length; i += 1) {
+    const player = orderedPlayers[i];
     const { error } = await supabase
       .from("room_players")
       .update({ part_indexes: parts[i] ?? [], seat: i })
@@ -661,7 +666,7 @@ export async function startOnlineGame(options: {
     if (error) throw error;
   }
 
-  const roster = snapshot.players.map((p, i) => ({
+  const roster = orderedPlayers.map((p, i) => ({
     ...p,
     partIndexes: parts[i] ?? [],
   }));
