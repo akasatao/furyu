@@ -251,7 +251,7 @@ export function ShirazuWritingPhase({
                 : "min-h-[220px] py-3 md:min-h-[clamp(180px,36dvh,280px)] md:py-[clamp(0.5rem,1.5dvh,1rem)]"
             }`}
           >
-            <p
+            <div
               className={`[writing-mode:vertical-rl] ${
                 free
                   ? compact
@@ -302,7 +302,7 @@ export function ShirazuWritingPhase({
                   </span>
                 );
               })}
-            </p>
+            </div>
           </div>
           {!ownerLabel && (
             <p

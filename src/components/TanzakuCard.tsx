@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { ShirazuLineSlots } from "@/components/ShirazuLineSlots";
+import { TextPeekDialog } from "@/components/TextPeekDialog";
 import { MODE_LABEL, PART_LABELS, PART_TARGETS } from "@/lib/constants";
+import { freePoemTranscript } from "@/lib/shirazu";
 import { shirazuOwnerLabel } from "@/lib/utils";
 import type { Poem } from "@/types/game";
 
@@ -38,6 +41,9 @@ export function TanzakuCard({
   const showText = still || writing;
   /** リレーの空枠は〇で音数を示す */
   const showShirazuSlots = isShirazu && !showText;
+  const [peekOpen, setPeekOpen] = useState(false);
+  const canPeekPoem = free && showText;
+  const transcript = canPeekPoem ? freePoemTranscript(poem) : "";
 
   let delayMs = 0;
   const lineTimings = poem.lines.map((line) => {
@@ -54,131 +60,163 @@ export function TanzakuCard({
     "pointer-events-none absolute text-[10px] leading-relaxed tracking-[0.2em] text-black/55 [writing-mode:vertical-rl] md:text-[clamp(0.65rem,1.6dvh,0.875rem)] md:tracking-[0.25em]";
 
   return (
-    <article
-      className="tanzaku relative flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[min(22rem,42dvh)] md:px-5 md:py-[clamp(1rem,3dvh,2rem)]"
-      data-write-ms={still ? undefined : totalWriteMs}
-    >
-      <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
-      {ownerLabel ? (
-        <>
-          <p className={`${ownerCornerClass} top-3 right-2 md:top-4 md:right-3`}>
-            {ownerLabel}
+    <>
+      <article
+        className={`tanzaku relative flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[min(22rem,42dvh)] md:px-5 md:py-[clamp(1rem,3dvh,2rem)] ${
+          canPeekPoem ? "cursor-pointer" : ""
+        }`}
+        data-write-ms={still ? undefined : totalWriteMs}
+        role={canPeekPoem ? "button" : undefined}
+        tabIndex={canPeekPoem ? 0 : undefined}
+        aria-label={canPeekPoem ? "短冊の文字起こしを見る" : undefined}
+        onClick={
+          canPeekPoem
+            ? () => {
+                setPeekOpen(true);
+              }
+            : undefined
+        }
+        onKeyDown={
+          canPeekPoem
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setPeekOpen(true);
+                }
+              }
+            : undefined
+        }
+      >
+        <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
+        {ownerLabel ? (
+          <>
+            <p className={`${ownerCornerClass} top-3 right-2 md:top-4 md:right-3`}>
+              {ownerLabel}
+            </p>
+            <p
+              className={`${ownerCornerClass} bottom-3 left-2 md:bottom-4 md:left-3`}
+            >
+              {ownerLabel}
+            </p>
+          </>
+        ) : (
+          <p className="mb-2 text-sm tracking-[0.35em] text-black/45 md:mb-[clamp(0.5rem,1.5dvh,1rem)] md:text-[clamp(0.875rem,2.5dvh,1.25rem)]">
+            {still
+              ? "風流オンライン"
+              : MODE_LABEL[isShirazu ? "haiku" : poem.mode]}
           </p>
-          <p
-            className={`${ownerCornerClass} bottom-3 left-2 md:bottom-4 md:left-3`}
-          >
-            {ownerLabel}
-          </p>
-        </>
-      ) : (
-        <p className="mb-2 text-sm tracking-[0.35em] text-black/45 md:mb-[clamp(0.5rem,1.5dvh,1rem)] md:text-[clamp(0.875rem,2.5dvh,1.25rem)]">
-          {still
-            ? "風流オンライン"
-            : MODE_LABEL[isShirazu ? "haiku" : poem.mode]}
-        </p>
-      )}
-      <div className="flex min-h-[220px] items-center justify-center py-3 md:min-h-[clamp(220px,42dvh,340px)] md:py-[clamp(0.75rem,2dvh,1.25rem)]">
-        {showText ? (
-          <p
-            key="writing"
-            className={
-              free
-                ? "text-[1.35rem] leading-none tracking-normal [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
-                : "text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
-            }
-            lang="ja"
-          >
-            {poem.lines.map((line, i) => {
-              const isLast = i === poem.lines.length - 1;
-              const offset = free
-                ? i === 0
-                  ? ""
-                  : isLast
-                    ? "mt-10 mr-6 md:mt-[clamp(1.5rem,4dvh,3.5rem)] md:mr-7"
-                    : "mt-4 mr-5 md:mt-[clamp(0.75rem,2dvh,1.5rem)] md:mr-6"
-                : i === 0
-                  ? ""
-                  : isLast
-                    ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
-                    : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
-              const target = PART_TARGETS.shirazu[i] ?? 5;
-              return (
-                <span
-                  key={i}
-                  className={`${still ? "" : "tanzaku-line "}${offset} block`.trim()}
-                  style={
-                    still
-                      ? undefined
-                      : {
-                          animationDelay: `${lineTimings[i].delayMs}ms`,
-                          animationDuration: `${lineTimings[i].durationMs}ms`,
-                        }
-                  }
-                >
-                  {isShirazu ? (
+        )}
+        <div className="flex min-h-[220px] items-center justify-center py-3 md:min-h-[clamp(220px,42dvh,340px)] md:py-[clamp(0.75rem,2dvh,1.25rem)]">
+          {showText ? (
+            <div
+              key="writing"
+              className={
+                free
+                  ? "pointer-events-none text-[1.35rem] leading-none tracking-normal [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
+                  : "text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
+              }
+              lang="ja"
+            >
+              {poem.lines.map((line, i) => {
+                const isLast = i === poem.lines.length - 1;
+                const offset = free
+                  ? i === 0
+                    ? ""
+                    : isLast
+                      ? "mt-10 mr-6 md:mt-[clamp(1.5rem,4dvh,3.5rem)] md:mr-7"
+                      : "mt-4 mr-5 md:mt-[clamp(0.75rem,2dvh,1.5rem)] md:mr-6"
+                  : i === 0
+                    ? ""
+                    : isLast
+                      ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
+                      : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
+                const target = PART_TARGETS.shirazu[i] ?? 5;
+                return (
+                  <span
+                    key={i}
+                    className={`${still ? "" : "tanzaku-line "}${offset} block`.trim()}
+                    style={
+                      still
+                        ? undefined
+                        : {
+                            animationDelay: `${lineTimings[i].delayMs}ms`,
+                            animationDuration: `${lineTimings[i].durationMs}ms`,
+                          }
+                    }
+                  >
+                    {isShirazu ? (
+                      <ShirazuLineSlots
+                        line={line}
+                        target={target}
+                        free={free}
+                        dimEmpty={false}
+                        slotPeek={false}
+                      />
+                    ) : (
+                      (line?.text ?? "？")
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          ) : showShirazuSlots ? (
+            <p
+              key="slots"
+              className={
+                free
+                  ? "text-[1.35rem] leading-none tracking-normal text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
+                  : "text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
+              }
+              lang="ja"
+            >
+              {PART_TARGETS.shirazu.map((target, i) => {
+                const isLast = i === PART_TARGETS.shirazu.length - 1;
+                const offset = free
+                  ? i === 0
+                    ? ""
+                    : isLast
+                      ? "mt-10 mr-6 md:mt-[clamp(1.5rem,4dvh,3.5rem)] md:mr-7"
+                      : "mt-4 mr-5 md:mt-[clamp(0.75rem,2dvh,1.5rem)] md:mr-6"
+                  : i === 0
+                    ? ""
+                    : isLast
+                      ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
+                      : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
+                return (
+                  <span key={i} className={`${offset} block`.trim()}>
                     <ShirazuLineSlots
-                      line={line}
+                      line={null}
                       target={target}
                       free={free}
-                      dimEmpty={false}
+                      slotPeek={false}
                     />
-                  ) : (
-                    (line?.text ?? "？")
-                  )}
+                  </span>
+                );
+              })}
+            </p>
+          ) : null}
+        </div>
+        {!ownerLabel && (
+          <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-2 text-center text-[10px] leading-relaxed tracking-wider text-black/50 md:mt-[clamp(0.25rem,1dvh,0.5rem)] md:max-w-[18rem] md:pt-[clamp(0.5rem,1.5dvh,0.75rem)] md:text-[clamp(0.65rem,1.5dvh,0.875rem)]">
+            {showAnonymous ? (
+              <span className="block">{MODE_LABEL.shirazu}</span>
+            ) : (
+              poem.lines.map((line, i) => (
+                <span key={i} className="block">
+                  {labels[i]}：{line?.authorName ?? "—"}
                 </span>
-              );
-            })}
+              ))
+            )}
           </p>
-        ) : showShirazuSlots ? (
-          <p
-            key="slots"
-            className={
-              free
-                ? "text-[1.35rem] leading-none tracking-normal text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
-                : "text-[1.35rem] leading-[2] tracking-[0.35em] text-black/35 [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
-            }
-            lang="ja"
-          >
-            {PART_TARGETS.shirazu.map((target, i) => {
-              const isLast = i === PART_TARGETS.shirazu.length - 1;
-              const offset = free
-                ? i === 0
-                  ? ""
-                  : isLast
-                    ? "mt-10 mr-6 md:mt-[clamp(1.5rem,4dvh,3.5rem)] md:mr-7"
-                    : "mt-4 mr-5 md:mt-[clamp(0.75rem,2dvh,1.5rem)] md:mr-6"
-                : i === 0
-                  ? ""
-                  : isLast
-                    ? "mt-10 md:mt-[clamp(1.5rem,4dvh,3.5rem)]"
-                    : "mt-4 md:mt-[clamp(0.75rem,2dvh,1.5rem)]";
-              return (
-                <span key={i} className={`${offset} block`.trim()}>
-                  <ShirazuLineSlots
-                    line={null}
-                    target={target}
-                    free={free}
-                  />
-                </span>
-              );
-            })}
-          </p>
-        ) : null}
-      </div>
-      {!ownerLabel && (
-        <p className="mt-1 max-w-[12rem] border-t-2 border-black pt-2 text-center text-[10px] leading-relaxed tracking-wider text-black/50 md:mt-[clamp(0.25rem,1dvh,0.5rem)] md:max-w-[18rem] md:pt-[clamp(0.5rem,1.5dvh,0.75rem)] md:text-[clamp(0.65rem,1.5dvh,0.875rem)]">
-          {showAnonymous ? (
-            <span className="block">{MODE_LABEL.shirazu}</span>
-          ) : (
-            poem.lines.map((line, i) => (
-              <span key={i} className="block">
-                {labels[i]}：{line?.authorName ?? "—"}
-              </span>
-            ))
-          )}
-        </p>
-      )}
-    </article>
+        )}
+      </article>
+      <TextPeekDialog
+        text={transcript}
+        open={peekOpen}
+        onClose={() => setPeekOpen(false)}
+        label="句の文字起こし"
+      />
+    </>
   );
 }
 

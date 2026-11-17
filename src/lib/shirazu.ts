@@ -345,6 +345,22 @@ export function poemMoraCount(poem: {
   return poem.lines.reduce((sum, line) => sum + lineUnits(line).length, 0);
 }
 
+const FREE_LINE_NAMES = ["上の句", "中の句", "下の句"] as const;
+
+/** 自由律の読みやすい文字起こし（ポップアップ用） */
+export function freePoemTranscript(poem: {
+  lines: ({ text: string; units?: string[] } | null)[];
+}): string {
+  return poem.lines
+    .map((line, i) => {
+      const name = FREE_LINE_NAMES[i] ?? `${i + 1}句`;
+      const units = lineUnits(line).filter((u) => u && u !== "〇");
+      const body = units.length > 0 ? units.join("　") : "（空）";
+      return `${name}\n${body}`;
+    })
+    .join("\n\n");
+}
+
 /** 残りの音枠に収まる提出か（しっかり） */
 export function canSubmitShirazuUnit(
   raw: string,

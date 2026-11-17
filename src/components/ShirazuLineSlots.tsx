@@ -1,6 +1,7 @@
 "use client";
 
 import { FitSlot } from "@/components/FitSlot";
+import { FreeSlotPeek } from "@/components/FreeSlotPeek";
 import { shirazuLineSlotUnits } from "@/lib/shirazu";
 import type { PoemLine } from "@/types/game";
 
@@ -11,6 +12,8 @@ interface ShirazuLineSlotsProps {
   free?: boolean;
   /** 空枠〇を薄く */
   dimEmpty?: boolean;
+  /** false なら枠タップで個別ポップアップしない（短冊全体の文字起こし用） */
+  slotPeek?: boolean;
   className?: string;
 }
 
@@ -20,6 +23,7 @@ export function ShirazuLineSlots({
   target,
   free = false,
   dimEmpty = true,
+  slotPeek = true,
   className = "",
 }: ShirazuLineSlotsProps) {
   const slots = shirazuLineSlotUnits(line, target);
@@ -48,6 +52,16 @@ export function ShirazuLineSlots({
     >
       {slots.map((unit, i) => {
         const empty = unit === "〇";
+        if (slotPeek) {
+          return (
+            <FreeSlotPeek
+              key={i}
+              text={unit}
+              empty={empty}
+              dimEmpty={dimEmpty}
+            />
+          );
+        }
         return (
           <span
             key={i}
@@ -57,7 +71,9 @@ export function ShirazuLineSlots({
               text={unit}
               empty={empty}
               minFontPx={9}
-              className={empty && dimEmpty ? "text-black/35" : "text-black"}
+              className={
+                empty && dimEmpty ? "text-black/35" : "text-black"
+              }
             />
           </span>
         );

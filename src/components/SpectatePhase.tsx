@@ -57,7 +57,7 @@ function ShirazuGallery({
             </p>
             <div className="tanzaku relative flex w-full flex-col items-center px-1 py-3 md:px-2 md:py-4">
               <div className="pointer-events-none absolute inset-x-2 top-0 h-1 bg-black" />
-              <p className={`[writing-mode:vertical-rl] ${textClass}`} lang="ja">
+              <div className={`[writing-mode:vertical-rl] ${textClass}`} lang="ja">
                 {SHIRAZU_LINE_TARGETS.map((target, i) => (
                   <span
                     key={i}
@@ -80,7 +80,7 @@ function ShirazuGallery({
                     />
                   </span>
                 ))}
-              </p>
+              </div>
             </div>
           </article>
         );
