@@ -14,6 +14,10 @@ interface FitSlotProps {
 /** ひらがな・カタカナ（小書き含む） */
 const KANA_CHAR =
   /^[\u3041-\u3096\u30A1-\u30FA\u31F0-\u31FF\uFF66-\uFF9D]$/u;
+/** 小書き。枠いっぱいに置くと普通の仮名と見分けにくいので、少しだけ縮める */
+const SMALL_KANA =
+  /^[ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶｧｨｩｪｫｯｬｭｮ]$/u;
+const SMALL_KANA_SCALE = 0.88;
 /** 単独の濁点。結合文字に揃えて一文字として置く */
 const DAKUTEN_CHAR = /^[\u3099\u309B\uFF9E]$/u;
 
@@ -28,6 +32,11 @@ function kanaWithDakuten(text: string): string | null {
   if (!KANA_CHAR.test(chars[0]) || !DAKUTEN_CHAR.test(chars[1])) return null;
   if (chars[1] === "\u3099") return text;
   return chars[0] + "\u3099";
+}
+
+function isSmallKana(ch: string): boolean {
+  const base = [...ch][0] ?? "";
+  return SMALL_KANA.test(base);
 }
 
 /**
@@ -112,13 +121,21 @@ export function FitSlot({
       {chars.map((ch, i) => {
         const t =
           chars.length === 1 ? inset : inset + (i / last) * (1 - inset * 2);
+        const small = isSmallKana(ch);
+        const placed = Boolean(voiced) || small;
+        const shiftY = voiced ? "0.06em" : "0em";
         return (
           <span
             key={`${i}-${ch}`}
-            className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap"
+            className={`absolute whitespace-nowrap ${placed ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
             style={{
               left: `${t * 100}%`,
               top: `${t * 100}%`,
+              // 結合濁点はこの字体だと枠の上にはみ出すので、仮名ごと少し下げる。
+              // 小書きは普通の仮名より一段小さくして見分けやすくする。
+              transform: placed
+                ? `translate(-50%, calc(-50% + ${shiftY}))${small ? ` scale(${SMALL_KANA_SCALE})` : ""}`
+                : undefined,
             }}
           >
             {ch}
