@@ -28,6 +28,8 @@ interface WaitingLobbyProps {
   onBack: () => void;
   /** ホームのモード選択へ */
   onLeave: () => void;
+  /** 亭主が次の一宴に No More TMC を宣言する */
+  onNoMoreTmc?: () => void;
 }
 
 export function WaitingLobby({
@@ -45,6 +47,7 @@ export function WaitingLobby({
   onKick,
   onBack,
   onLeave,
+  onNoMoreTmc,
 }: WaitingLobbyProps) {
   const hostName = players.find((p) => p.isHost)?.name;
 
@@ -175,6 +178,17 @@ export function WaitingLobby({
               ? "連衆を待っています"
               : "開宴"}
       </button>
+
+      {isHost && onNoMoreTmc ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onNoMoreTmc}
+          className="shrink-0 self-center text-xs tracking-[0.15em] text-black/40 underline-offset-4 hover:text-black/70 hover:underline disabled:opacity-40"
+        >
+          No More TMC
+        </button>
+      ) : null}
 
       <button
         type="button"

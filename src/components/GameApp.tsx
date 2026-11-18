@@ -6,6 +6,7 @@ import { BgmPlayer } from "@/components/BgmPlayer";
 import { ViewportFit } from "@/components/ViewportFit";
 import { HomeScreen, type HomeStep } from "@/components/HomeScreen";
 import { KickMenu } from "@/components/KickMenu";
+import { NoMoreTmcOverlay } from "@/components/NoMoreTmcOverlay";
 import { RevealPhase } from "@/components/RevealPhase";
 import { ShirazuWritingPhase } from "@/components/ShirazuWritingPhase";
 import { SpectatePhase } from "@/components/SpectatePhase";
@@ -33,6 +34,8 @@ import {
 } from "@/lib/online/poem-history";
 import {
   advanceShirazuReveal,
+  armNoMoreTmc,
+  banishForNoMoreTmc,
   createOnlineRoom,
   handOverAndRemove,
   joinOnlineRoom,
@@ -53,6 +56,12 @@ import type { StampId } from "@/lib/stamps";
 import { StampBalloons, type StampBalloon } from "@/components/StampBalloons";
 import { StampPicker } from "@/components/StampPicker";
 import type { OnlineRoomSnapshot } from "@/lib/online/types";
+import {
+  completesForbiddenName,
+  isNoMoreTmcBanish,
+  shirazuBeforeText,
+  verseBeforeText,
+} from "@/lib/no-more-tmc";
 import {
   canSubmitFreeShirazuUnit,
   canSubmitShirazuUnit,
@@ -148,6 +157,10 @@ export function GameApp() {
   const [hostPickingTheme, setHostPickingTheme] = useState(false);
   /** リレー流派 */
   const [shirazuStyle, setShirazuStyle] = useState<ShirazuStyle>("strict");
+  /** 次の一宴だけ、たまき等の完成で破門する */
+  const [noMoreTmc, setNoMoreTmc] = useState(false);
+  /** 増やすたびに No More TMC の演出を最初から再生する */
+  const [tmcPlayId, setTmcPlayId] = useState(0);
 
   /** 披露スタンプの風船（和室の披露中だけ） */
   const [balloons, setBalloons] = useState<StampBalloon[]>([]);
@@ -296,6 +309,7 @@ export function GameApp() {
       setShirazuStyle(
         snapshot.room.shirazu_style === "free" ? "free" : "strict",
       );
+      setNoMoreTmc(snapshot.room.no_more_tmc === true);
       const nextPoems = snapshot.room.poems ?? [];
       setPoems(nextPoems);
       setTurn(snapshot.room.turn);
@@ -387,20 +401,21 @@ export function GameApp() {
             ejectRef.current("和室が閉じました");
             return;
           }
+          const self = myIdRef.current;
+          const present =
+            snapshot.players.some((p) => p.id === self) ||
+            snapshot.spectators.some((p) => p.id === self);
+          // 自分の破門を、亭主不在の退出より先に出す
+          if (self && !present) {
+            banishRef.current();
+            return;
+          }
           if (
             (snapshot.room.phase === "lobby" ||
               snapshot.room.phase === "writing") &&
             !snapshot.players.some((p) => p.isHost)
           ) {
             ejectRef.current("亭主が退出しました");
-            return;
-          }
-          const self = myIdRef.current;
-          const present =
-            snapshot.players.some((p) => p.id === self) ||
-            snapshot.spectators.some((p) => p.id === self);
-          if (self && !present) {
-            banishRef.current();
             return;
           }
 
@@ -486,6 +501,10 @@ export function GameApp() {
             return;
           }
           addBalloon(stamp.stamp, stamp.name, stamp.playerId);
+        },
+        (hostId) => {
+          if (hostId === myIdRef.current) return;
+          setTmcPlayId((n) => n + 1);
         },
       );
     },
@@ -859,6 +878,8 @@ export function GameApp() {
             setTurn(null);
             setLocalDraft("");
             setTheme("");
+            setNoMoreTmc(false);
+            setTmcPlayId(0);
             setErrorMessage("");
           });
         },
@@ -949,6 +970,21 @@ export function GameApp() {
     }
   };
 
+  const handleNoMoreTmc = async () => {
+    if (!roomId || !myId || busy) return;
+    setBusy(true);
+    setErrorMessage("");
+    try {
+      const snapshot = await armNoMoreTmc({ roomId, hostId: myId });
+      applySnapshot(snapshot);
+      setTmcPlayId((n) => n + 1);
+    } catch (error) {
+      setErrorMessage((error as Error).message || "宣言できませんでした。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDraftChange = (value: string) => {
     if (!turn) return;
     if (isShirazuTurn(turn)) {
@@ -1006,6 +1042,33 @@ export function GameApp() {
         return;
       }
     } else if (!draft) {
+      return;
+    }
+
+    if (
+      roomId &&
+      noMoreTmc &&
+      draft &&
+      completesForbiddenName(
+        shirazu
+          ? shirazuBeforeText(
+              shirazuPoemIndex >= 0 ? poems[shirazuPoemIndex] : undefined,
+            )
+          : verseBeforeText(poems[0], isLineTurn(turn) ? turn.stepIndex : 0),
+        draft,
+      )
+    ) {
+      submitLockRef.current = true;
+      setBusy(true);
+      try {
+        await banishForNoMoreTmc({ roomId, playerId: myId });
+        banishRef.current();
+      } catch (error) {
+        setErrorMessage((error as Error).message || "破門できませんでした。");
+      } finally {
+        submitLockRef.current = false;
+        setBusy(false);
+      }
       return;
     }
 
@@ -1105,6 +1168,10 @@ export function GameApp() {
         }
       }
     } catch (error) {
+      if (isNoMoreTmcBanish(error)) {
+        banishRef.current();
+        return;
+      }
       setErrorMessage((error as Error).message || "提出に失敗しました。");
       if (shirazu) setPoems(poemsBefore);
       setTurn((prev) => {
@@ -1362,6 +1429,9 @@ export function GameApp() {
               onLeave={() => {
                 void handleLeave();
               }}
+              onNoMoreTmc={() => {
+                void handleNoMoreTmc();
+              }}
             />
           </ViewportFit>
         )}
@@ -1528,6 +1598,8 @@ export function GameApp() {
           </p>
         </div>
       )}
+
+      <NoMoreTmcOverlay playId={tmcPlayId} />
     </div>
   );
 }

@@ -24,6 +24,8 @@ export interface RoomRow {
   theme: string;
   /** リレー流派。俳句・短歌は strict */
   shirazu_style: ShirazuStyle;
+  /** 次の一宴だけ、たまき等の完成で破門する */
+  no_more_tmc: boolean;
   created_at: string;
 }
 

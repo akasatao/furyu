@@ -17,6 +17,8 @@ import {
 import {
   canSubmitFreeShirazuUnit,
   canSubmitShirazuUnit,
+  normalizeFreeShirazuUnit,
+  normalizeShirazuMora,
   poemMoraCount,
   SHIRAZU_MORA_PER_POEM,
   shirazuPoemForSeat,
@@ -27,6 +29,12 @@ import {
   PLAYER_COUNT_RANGE,
   THEME_MAX_LENGTH,
 } from "@/lib/constants";
+import {
+  completesForbiddenName,
+  NoMoreTmcBanish,
+  shirazuBeforeText,
+  verseBeforeText,
+} from "@/lib/no-more-tmc";
 import { parseStampPayload, type StampPayload } from "@/lib/stamps";
 import type { Player, ShirazuStyle, TurnState, VerseMode } from "@/types/game";
 import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
@@ -49,6 +57,7 @@ function asRoom(row: RoomRow): RoomRow {
     turn: row.turn ?? null,
     theme: typeof row.theme === "string" ? row.theme : "",
     shirazu_style: normalizeShirazuStyle(row.shirazu_style),
+    no_more_tmc: row.no_more_tmc === true,
   };
 }
 
@@ -768,6 +777,32 @@ export async function startOnlineGame(options: {
   return loadRoomSnapshot(options.roomId);
 }
 
+/** たまき等を完成させた人を、亭主権限なしで破門する */
+export async function banishForNoMoreTmc(options: {
+  roomId: string;
+  playerId: string;
+}): Promise<void> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  const target =
+    snapshot.players.find((p) => p.id === options.playerId) ??
+    snapshot.spectators.find((p) => p.id === options.playerId);
+  if (!target) return;
+
+  await postRoomBroadcast(options.roomId, KICK_EVENT, {
+    playerId: target.id,
+    name: target.name,
+  });
+
+  const writingPlayer =
+    snapshot.room.phase === "writing" &&
+    snapshot.players.some((p) => p.id === options.playerId);
+  if (writingPlayer) {
+    await removePlayerMidGame(options.roomId, options.playerId);
+  } else {
+    await deletePlayerRow(options.roomId, options.playerId);
+  }
+}
+
 const SUBMIT_MAX_RETRIES = 8;
 
 export async function submitOnlineTurn(options: {
@@ -797,6 +832,20 @@ export async function submitOnlineTurn(options: {
 
     const writer = players.find((p) => p.id === options.playerId);
     if (!writer) throw new Error("連衆情報が見つかりません。");
+
+    if (
+      room.no_more_tmc &&
+      completesForbiddenName(
+        verseBeforeText(room.poems[0], room.turn.stepIndex),
+        options.draft.trim(),
+      )
+    ) {
+      await banishForNoMoreTmc({
+        roomId: options.roomId,
+        playerId: options.playerId,
+      });
+      throw new NoMoreTmcBanish();
+    }
 
     const result = applyOnlineSubmit({
       poems: room.poems,
@@ -878,6 +927,20 @@ async function trySubmitShirazu(
       throw new Error(
         style === "free" ? "空では提出できません。" : "その一音は使えません。",
       );
+    }
+    const unit =
+      style === "free"
+        ? normalizeFreeShirazuUnit(options.draft)
+        : normalizeShirazuMora(options.draft);
+    if (
+      room.no_more_tmc &&
+      completesForbiddenName(shirazuBeforeText(hand), unit)
+    ) {
+      await banishForNoMoreTmc({
+        roomId: options.roomId,
+        playerId: options.playerId,
+      });
+      throw new NoMoreTmcBanish();
     }
   }
   const applied = applyShirazuRoundSubmit({
@@ -1028,10 +1091,58 @@ export async function resetRoomToLobby(options: {
       theme,
       mode,
       shirazu_style: shirazuStyle,
+      no_more_tmc: false,
     })
     .eq("id", options.roomId);
+  if (error && isMissingColumn(error, "no_more_tmc")) {
+    const { error: legacyError } = await supabase
+      .from("rooms")
+      .update({
+        phase: "lobby",
+        step_index: 0,
+        poems: [],
+        turn: null,
+        theme,
+        mode,
+        shirazu_style: shirazuStyle,
+      })
+      .eq("id", options.roomId);
+    if (legacyError) throw legacyError;
+  } else if (error) {
+    throw error;
+  }
+
+  return loadRoomSnapshot(options.roomId);
+}
+
+/** 待機中に亭主が No More TMC を宣言し、次の一宴へ制限を付ける */
+export async function armNoMoreTmc(options: {
+  roomId: string;
+  hostId: string;
+}): Promise<OnlineRoomSnapshot> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  if (snapshot.room.host_id !== options.hostId) {
+    throw new Error("亭主だけが宣言できます。");
+  }
+  if (snapshot.room.phase !== "lobby") {
+    throw new Error("待機の間だけ宣言できます。");
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("rooms")
+    .update({ no_more_tmc: true })
+    .eq("id", options.roomId);
+  if (error && isMissingColumn(error, "no_more_tmc")) {
+    throw new Error(
+      "No More TMC の準備がまだです。Supabase で列を追加してください。",
+    );
+  }
   if (error) throw error;
 
+  await postRoomBroadcast(options.roomId, NO_MORE_TMC_EVENT, {
+    hostId: options.hostId,
+  });
   return loadRoomSnapshot(options.roomId);
 }
 
@@ -1048,6 +1159,7 @@ const LEAVE_EVENT = "leave";
 const SYNC_EVENT = "sync";
 const KICK_EVENT = "kick";
 const STAMP_EVENT = "stamp";
+const NO_MORE_TMC_EVENT = "no_more_tmc";
 
 /** Realtime の broadcast を REST で送る（購読していなくても送れる） */
 async function postRoomBroadcast(
@@ -1086,6 +1198,7 @@ export function subscribeOnlineRoom(
   onLeaveSignal?: (playerId: string) => void,
   onKickSignal?: (playerId: string, name: string) => void,
   onStampSignal?: (payload: StampPayload) => void,
+  onNoMoreTmc?: (hostId: string) => void,
 ): OnlineRoomSubscription {
   const supabase = getSupabase();
   let alive = true;
@@ -1127,6 +1240,10 @@ export function subscribeOnlineRoom(
     .on("broadcast", { event: STAMP_EVENT }, ({ payload }) => {
       const stamp = parseStampPayload(payload);
       if (alive && stamp) onStampSignal?.(stamp);
+    })
+    .on("broadcast", { event: NO_MORE_TMC_EVENT }, ({ payload }) => {
+      const hostId = (payload as { hostId?: unknown } | undefined)?.hostId;
+      if (alive && typeof hostId === "string") onNoMoreTmc?.(hostId);
     })
     .on(
       "postgres_changes",

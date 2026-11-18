@@ -16,6 +16,8 @@ create table if not exists public.rooms (
   -- リレー: strict=しっかり / free=自由律。俳句・短歌は未使用（strict）
   shirazu_style text not null default 'strict'
     check (shirazu_style in ('strict', 'free')),
+  -- 次の一宴だけ、たまき等を完成させた人を破門する
+  no_more_tmc boolean not null default false,
   created_at timestamptz not null default now(),
   -- 在室中だけ更新する。途切れた部屋は一覧から外し、行も消す
   last_seen timestamptz not null default now()
@@ -30,6 +32,12 @@ alter table public.rooms
 
 alter table public.rooms
   add column if not exists shirazu_style text not null default 'strict';
+
+-- 次の一宴だけ、たまき等を完成させた人を破門する
+alter table public.rooms
+  add column if not exists no_more_tmc boolean not null default false;
+
+notify pgrst, 'reload schema';
 
 do $$
 begin
