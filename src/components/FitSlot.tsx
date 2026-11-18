@@ -22,16 +22,15 @@ const SMALL_KANA_SCALE = 0.88;
 const DAKUTEN_CHAR = /^[\u3099\u309B\uFF9E]$/u;
 
 /**
- * 「あ゛」のように仮名1字＋濁点だけなら、結合濁点を付けた1文字を返す。
- * 間隔つきの濁点のまま斜めに置かず、フォントの濁点位置で読めるようにする。
- * それ以外は null（斜め詰めのまま）。
+ * 「あ゛」のように仮名1字＋濁点だけなら、仮名の方を返す。
+ * 結合濁点を付けるとデスクトップで別の字体になり、点が枠の外へ消える。
+ * 仮名は元の字体のまま、濁点は別の「゛」を右上に重ねる。
  */
-function kanaWithDakuten(text: string): string | null {
+function kanaDakutenBase(text: string): string | null {
   const chars = [...text];
   if (chars.length !== 2) return null;
   if (!KANA_CHAR.test(chars[0]) || !DAKUTEN_CHAR.test(chars[1])) return null;
-  if (chars[1] === "\u3099") return text;
-  return chars[0] + "\u3099";
+  return chars[0];
 }
 
 function isSmallKana(ch: string): boolean {
@@ -52,8 +51,8 @@ export function FitSlot({
   empty = false,
 }: FitSlotProps) {
   const ref = useRef<HTMLSpanElement>(null);
-  const voiced = kanaWithDakuten(text);
-  const chars = voiced ? [voiced] : [...text];
+  const voicedBase = kanaDakutenBase(text);
+  const chars = voicedBase ? [voicedBase] : [...text];
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -122,23 +121,39 @@ export function FitSlot({
         const t =
           chars.length === 1 ? inset : inset + (i / last) * (1 - inset * 2);
         const small = isSmallKana(ch);
-        const placed = Boolean(voiced) || small;
-        const shiftY = voiced ? "0.06em" : "0em";
+        const showMark = voicedBase != null && i === 0;
         return (
           <span
             key={`${i}-${ch}`}
-            className={`absolute whitespace-nowrap ${placed ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
+            className={`absolute whitespace-nowrap ${small ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
             style={{
               left: `${t * 100}%`,
               top: `${t * 100}%`,
-              // 結合濁点はこの字体だと枠の上にはみ出すので、仮名ごと少し下げる。
-              // 小書きは普通の仮名より一段小さくして見分けやすくする。
-              transform: placed
-                ? `translate(-50%, calc(-50% + ${shiftY}))${small ? ` scale(${SMALL_KANA_SCALE})` : ""}`
+              transform: small
+                ? `translate(-50%, -50%) scale(${SMALL_KANA_SCALE})`
                 : undefined,
             }}
           >
             {ch}
+            {showMark ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute overflow-hidden leading-none"
+                style={{
+                  left: "0.56em",
+                  top: "0.02em",
+                  width: "0.40em",
+                  height: "0.32em",
+                }}
+              >
+                <span
+                  className="absolute leading-none"
+                  style={{ left: "-0.14em", top: "-0.10em" }}
+                >
+                  {"\u309B"}
+                </span>
+              </span>
+            ) : null}
           </span>
         );
       })}
