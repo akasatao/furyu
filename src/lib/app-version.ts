@@ -1,2 +1,2 @@
 /** デプロイ確認用。commit / push のたびに 0.1 ずつ上げる */
-export const APP_VERSION = "v2.5";
+export const APP_VERSION = "v2.6";

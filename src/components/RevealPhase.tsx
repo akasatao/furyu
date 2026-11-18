@@ -125,6 +125,8 @@ export function RevealPhase({
   /** 別モードで進むときだけ入る。同じモードの再宴では null */
   const [nextMode, setNextMode] = useState<VerseMode | null>(null);
   const [nextStyle, setNextStyle] = useState<ShirazuStyle>("strict");
+  /** お題の「戻る」が流派一覧へ戻るか、モード一覧へ戻るか */
+  const [themeBackStep, setThemeBackStep] = useState<"mode" | "style">("mode");
   const [themeDraft, setThemeDraft] = useState(theme);
   const themeInputRef = useRef<HTMLInputElement>(null);
   const restoredPicker = useRef(false);
@@ -237,6 +239,17 @@ export function RevealPhase({
   }, []);
 
   const currentMode = poems[0]?.mode;
+  const currentShirazuStyle: ShirazuStyle =
+    poems[0]?.shirazuStyle === "free" || shirazuStyle === "free"
+      ? "free"
+      : "strict";
+  /** 今がリレーのとき、反対の流派をモード一覧に出す */
+  const otherShirazuStyle: ShirazuStyle | null =
+    currentMode === "shirazu"
+      ? currentShirazuStyle === "free"
+        ? "strict"
+        : "free"
+      : null;
   const alternateModes = VERSE_MODES.filter((candidate) => {
     if (!currentMode || candidate === currentMode) return false;
     const range = PLAYER_COUNT_RANGE[candidate];
@@ -275,7 +288,12 @@ export function RevealPhase({
       closePickers();
       return;
     }
-    setPickerStep(nextMode === "shirazu" ? "style" : "mode");
+    setPickerStep(themeBackStep);
+  };
+
+  const openThemeForNext = () => {
+    setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
+    setPickerStep("theme");
   };
 
   const selectAlternateMode = (mode: VerseMode) => {
@@ -285,15 +303,23 @@ export function RevealPhase({
       setPickerStep("style");
       return;
     }
-    setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
-    setPickerStep("theme");
+    setThemeBackStep("mode");
+    openThemeForNext();
   };
 
   const selectShirazuStyle = (style: ShirazuStyle) => {
     if (advancing) return;
     setNextStyle(style);
-    setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
-    setPickerStep("theme");
+    setThemeBackStep("style");
+    openThemeForNext();
+  };
+
+  const selectOtherShirazuStyle = () => {
+    if (advancing || !otherShirazuStyle) return;
+    setNextMode("shirazu");
+    setNextStyle(otherShirazuStyle);
+    setThemeBackStep("mode");
+    openThemeForNext();
   };
 
   useEffect(() => {
@@ -306,7 +332,7 @@ export function RevealPhase({
 
   useEffect(() => {
     if (!pickingTheme) return;
-    themeInputRef.current?.focus();
+    themeInputRef.current?.focus({ preventScroll: true });
   }, [pickingTheme]);
 
   const pickRandomTheme = () => {
@@ -336,6 +362,34 @@ export function RevealPhase({
         : undefined,
     );
   };
+
+  const pickerOpen = canRematch && pickerStep !== "closed";
+  const exitActions = (
+    <>
+      <button
+        type="button"
+        onClick={onHome}
+        className="brush-btn-outline w-full px-4 py-3 text-sm tracking-widest"
+      >
+        {isSolo ? "ホームへ戻る" : "玄関へ戻る"}
+      </button>
+      {!isShirazu && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            void handleOpenBulkShare();
+          }}
+          className="brush-btn-outline w-full px-4 py-2.5 text-xs tracking-widest text-black/55"
+        >
+          {busy ? "画像を用意中…" : "句をシェアする"}
+        </button>
+      )}
+      {errorMessage && (
+        <p className="text-center text-xs underline">{errorMessage}</p>
+      )}
+    </>
+  );
 
   if (!canRematch && hostPickingTheme) {
     return (
@@ -552,104 +606,15 @@ export function RevealPhase({
       </div>
 
       {showActions && (
-        <div className="flex w-full shrink-0 flex-col gap-2">
-          {canRematch ? (
-            pickerStep === "theme" ? (
-              <div className="flex flex-col gap-2">
-                <input
-                  ref={themeInputRef}
-                  type="text"
-                  value={themeDraft}
-                  maxLength={THEME_MAX_LENGTH}
-                  enterKeyHint="done"
-                  disabled={advancing}
-                  onChange={(e) => setThemeDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                    if (e.key === "Enter") confirmTheme();
-                  }}
-                  className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-[clamp(0.75rem,2dvh,1rem)] md:text-2xl"
-                />
-                <button
-                  type="button"
-                  disabled={advancing}
-                  onClick={pickRandomTheme}
-                  className="brush-btn-outline w-full px-4 py-2.5 text-sm tracking-[0.35em]"
-                >
-                  ランダムなお題
-                </button>
-                <button
-                  type="button"
-                  disabled={advancing}
-                  onClick={confirmTheme}
-                  className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
-                >
-                  {advancing
-                    ? "開き中…"
-                    : themeDraft.trim()
-                      ? "このお題で進む"
-                      : "お題なしで進む"}
-                </button>
-                <button
-                  type="button"
-                  disabled={advancing}
-                  onClick={backFromTheme}
-                  className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
-                >
-                  戻る
-                </button>
-              </div>
-            ) : pickerStep === "mode" ? (
-              <div className="flex flex-col gap-2">
-                <p className="py-1 text-center text-sm tracking-widest text-black/55">
-                  モードを選ぶ
-                </p>
-                {alternateModes.map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    disabled={advancing}
-                    onClick={() => selectAlternateMode(mode)}
-                    className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
-                  >
-                    {MODE_LABEL[mode]}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  disabled={advancing}
-                  onClick={closePickers}
-                  className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
-                >
-                  戻る
-                </button>
-              </div>
-            ) : pickerStep === "style" ? (
-              <div className="flex flex-col gap-2">
-                <p className="py-1 text-center text-sm tracking-widest text-black/55">
-                  どう詠む？
-                </p>
-                {SHIRAZU_STYLES.map((style) => (
-                  <button
-                    key={style}
-                    type="button"
-                    disabled={advancing}
-                    onClick={() => selectShirazuStyle(style)}
-                    className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
-                  >
-                    {SHIRAZU_STYLE_LABEL[style]}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  disabled={advancing}
-                  onClick={() => setPickerStep("mode")}
-                  className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
-                >
-                  戻る
-                </button>
-              </div>
-            ) : (
+        <div className="relative w-full shrink-0">
+          <div
+            className={`flex flex-col gap-2 ${
+              pickerOpen ? "invisible pointer-events-none" : ""
+            }`}
+            aria-hidden={pickerOpen}
+            inert={pickerOpen ? true : undefined}
+          >
+            {canRematch ? (
               <>
                 <button
                   type="button"
@@ -658,7 +623,7 @@ export function RevealPhase({
                 >
                   {isSolo ? "もう一度詠む" : "再び宴を開く"}
                 </button>
-                {alternateModes.length > 0 ? (
+                {alternateModes.length > 0 || otherShirazuStyle ? (
                   <button
                     type="button"
                     onClick={openModePicker}
@@ -668,33 +633,123 @@ export function RevealPhase({
                   </button>
                 ) : null}
               </>
-            )
-          ) : hostPresent ? (
-            <p className="py-3 text-center text-sm tracking-widest text-black/45">
-              亭主がもう一度開くのを待っています
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={onHome}
-            className="brush-btn-outline w-full px-4 py-3 text-sm tracking-widest"
-          >
-            {isSolo ? "ホームへ戻る" : "玄関へ戻る"}
-          </button>
-          {!isShirazu && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                void handleOpenBulkShare();
-              }}
-              className="brush-btn-outline w-full px-4 py-2.5 text-xs tracking-widest text-black/55"
-            >
-              {busy ? "画像を用意中…" : "句をシェアする"}
-            </button>
-          )}
-          {errorMessage && (
-            <p className="text-center text-xs underline">{errorMessage}</p>
+            ) : hostPresent ? (
+              <p className="py-3 text-center text-sm tracking-widest text-black/45">
+                亭主がもう一度開くのを待っています
+              </p>
+            ) : null}
+            {exitActions}
+          </div>
+          {pickerOpen && (
+            <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 bg-white">
+              {pickerStep === "theme" ? (
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={themeInputRef}
+                    type="text"
+                    value={themeDraft}
+                    maxLength={THEME_MAX_LENGTH}
+                    enterKeyHint="done"
+                    disabled={advancing}
+                    onChange={(e) => setThemeDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                      if (e.key === "Enter") confirmTheme();
+                    }}
+                    className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-[clamp(0.75rem,2dvh,1rem)] md:text-2xl"
+                  />
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={pickRandomTheme}
+                    className="brush-btn-outline w-full px-4 py-2.5 text-sm tracking-[0.35em]"
+                  >
+                    ランダムなお題
+                  </button>
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={confirmTheme}
+                    className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                  >
+                    {advancing
+                      ? "開き中…"
+                      : themeDraft.trim()
+                        ? "このお題で進む"
+                        : "お題なしで進む"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={backFromTheme}
+                    className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+                  >
+                    戻る
+                  </button>
+                </div>
+              ) : pickerStep === "mode" ? (
+                <div className="flex flex-col gap-2">
+                  <p className="py-1 text-center text-sm tracking-widest text-black/55">
+                    モードを選ぶ
+                  </p>
+                  {alternateModes.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={advancing}
+                      onClick={() => selectAlternateMode(mode)}
+                      className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                    >
+                      {MODE_LABEL[mode]}
+                    </button>
+                  ))}
+                  {otherShirazuStyle ? (
+                    <button
+                      type="button"
+                      disabled={advancing}
+                      onClick={selectOtherShirazuStyle}
+                      className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                    >
+                      {SHIRAZU_STYLE_LABEL[otherShirazuStyle]}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={closePickers}
+                    className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+                  >
+                    戻る
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <p className="py-1 text-center text-sm tracking-widest text-black/55">
+                    どう詠む？
+                  </p>
+                  {SHIRAZU_STYLES.map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      disabled={advancing}
+                      onClick={() => selectShirazuStyle(style)}
+                      className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                    >
+                      {SHIRAZU_STYLE_LABEL[style]}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={() => setPickerStep("mode")}
+                    className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+                  >
+                    戻る
+                  </button>
+                </div>
+              )}
+              {exitActions}
+            </div>
           )}
         </div>
       )}
