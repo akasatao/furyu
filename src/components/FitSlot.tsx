@@ -21,16 +21,27 @@ const SMALL_KANA_SCALE = 0.88;
 /** 単独の濁点。結合文字に揃えて一文字として置く */
 const DAKUTEN_CHAR = /^[\u3099\u309B\uFF9E]$/u;
 
+type SlotChar = { text: string; mark: boolean };
+
 /**
- * 「あ゛」のように仮名1字＋濁点だけなら、仮名の方を返す。
- * 結合濁点を付けるとデスクトップで別の字体になり、点が枠の外へ消える。
- * 仮名は元の字体のまま、濁点は別の「゛」を右上に重ねる。
+ * 仮名の直後の濁点は、その仮名に付ける。
+ * 結合文字にするとデスクトップで字体が替わり点が消えるので、字形は仮名のまま。
+ * 「あ゛い」は「あ゛」「い」の2つ、「あい゛」は「あ」「い゛」の2つになる。
  */
-function kanaDakutenBase(text: string): string | null {
-  const chars = [...text];
-  if (chars.length !== 2) return null;
-  if (!KANA_CHAR.test(chars[0]) || !DAKUTEN_CHAR.test(chars[1])) return null;
-  return chars[0];
+function slotChars(text: string): SlotChar[] {
+  const raw = [...text];
+  const out: SlotChar[] = [];
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i] ?? "";
+    const next = raw[i + 1];
+    if (next && KANA_CHAR.test(ch) && DAKUTEN_CHAR.test(next)) {
+      out.push({ text: ch, mark: true });
+      i += 1;
+      continue;
+    }
+    out.push({ text: ch, mark: false });
+  }
+  return out;
 }
 
 function isSmallKana(ch: string): boolean {
@@ -51,8 +62,7 @@ export function FitSlot({
   empty = false,
 }: FitSlotProps) {
   const ref = useRef<HTMLSpanElement>(null);
-  const voicedBase = kanaDakutenBase(text);
-  const chars = voicedBase ? [voicedBase] : [...text];
+  const chars = slotChars(text);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -120,42 +130,75 @@ export function FitSlot({
       {chars.map((ch, i) => {
         const t =
           chars.length === 1 ? inset : inset + (i / last) * (1 - inset * 2);
-        const small = isSmallKana(ch);
-        const showMark = voicedBase != null && i === 0;
-        const liftDakuten =
-          (chars.length === 2 || chars.length === 3) && DAKUTEN_CHAR.test(ch);
+        const small = isSmallKana(ch.text);
+        // 斜めの小さい文字では、点を仮名の右上まで上げる
+        const markTop =
+          chars.length === 2 || chars.length === 3 ? "-0.04em" : "-0.02em";
         return (
           <span
-            key={`${i}-${ch}`}
+            key={`${i}-${ch.text}-${ch.mark ? "d" : "p"}`}
             className={`absolute whitespace-nowrap ${small ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
             style={{
               left: `${t * 100}%`,
-              // 斜め2〜3文字では濁点だけが下に残るので、少し上げる
-              top: liftDakuten ? `calc(${t * 100}% - 0.55em)` : `${t * 100}%`,
+              top: `${t * 100}%`,
               transform: small
                 ? `translate(-50%, -50%) scale(${SMALL_KANA_SCALE})`
                 : undefined,
             }}
           >
-            {ch}
-            {showMark ? (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute overflow-hidden leading-none"
-                style={{
-                  left: "0.56em",
-                  top: "0.02em",
-                  width: "0.40em",
-                  height: "0.32em",
-                }}
-              >
+            {ch.text}
+            {ch.mark ? (
+              chars.length === 1 ? (
                 <span
-                  className="absolute leading-none"
-                  style={{ left: "-0.14em", top: "-0.10em" }}
+                  aria-hidden
+                  className="pointer-events-none absolute overflow-hidden leading-none"
+                  style={{
+                    left: "0.56em",
+                    top: "0.02em",
+                    width: "0.40em",
+                    height: "0.32em",
+                  }}
                 >
-                  {"\u309B"}
+                  <span
+                    className="absolute leading-none"
+                    style={{ left: "-0.14em", top: "-0.10em" }}
+                  >
+                    {"\u309B"}
+                  </span>
                 </span>
-              </span>
+              ) : (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute"
+                  style={{
+                    left: "0.55em",
+                    top: markTop,
+                    width: "0.36em",
+                    height: "0.26em",
+                  }}
+                >
+                  <span
+                    className="absolute rounded-full"
+                    style={{
+                      left: 0,
+                      top: "32%",
+                      width: "0.15em",
+                      height: "0.15em",
+                      background: "currentColor",
+                    }}
+                  />
+                  <span
+                    className="absolute rounded-full"
+                    style={{
+                      right: 0,
+                      top: 0,
+                      width: "0.15em",
+                      height: "0.15em",
+                      background: "currentColor",
+                    }}
+                  />
+                </span>
+              )
             ) : null}
           </span>
         );
