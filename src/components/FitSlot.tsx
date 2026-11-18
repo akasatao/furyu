@@ -122,13 +122,16 @@ export function FitSlot({
           chars.length === 1 ? inset : inset + (i / last) * (1 - inset * 2);
         const small = isSmallKana(ch);
         const showMark = voicedBase != null && i === 0;
+        const liftDakuten =
+          (chars.length === 2 || chars.length === 3) && DAKUTEN_CHAR.test(ch);
         return (
           <span
             key={`${i}-${ch}`}
             className={`absolute whitespace-nowrap ${small ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
             style={{
               left: `${t * 100}%`,
-              top: `${t * 100}%`,
+              // 斜め2〜3文字では濁点だけが下に残るので、少し上げる
+              top: liftDakuten ? `calc(${t * 100}% - 0.55em)` : `${t * 100}%`,
               transform: small
                 ? `translate(-50%, -50%) scale(${SMALL_KANA_SCALE})`
                 : undefined,
