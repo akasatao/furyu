@@ -45,17 +45,26 @@ export function NoMoreTmcOverlay({ playId }: { playId: number }) {
   if (stage === "off") return null;
   const letter = LETTERS[letterIndex] ?? "N";
 
+  const ink = {
+    textShadow: "0 0 12px #fff, 0 0 24px #fff, 0 0 4px #fff, 0 0 2px #fff",
+  };
+
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-white"
+      className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center"
     >
       {stage === "letter" ? (
-        <p className="text-[clamp(6rem,28vw,12rem)] leading-none">{letter}</p>
+        <p
+          className="text-[clamp(6rem,28vw,12rem)] leading-none"
+          style={ink}
+        >
+          {letter}
+        </p>
       ) : (
         <p
           className="whitespace-nowrap text-[clamp(2.75rem,9vw,7.5rem)] leading-none tracking-[0.08em]"
-          style={{ transform: "rotate(28deg)" }}
+          style={{ ...ink, transform: "rotate(28deg)" }}
         >
           No More TMC
         </p>

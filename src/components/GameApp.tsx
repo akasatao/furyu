@@ -1432,6 +1432,7 @@ export function GameApp() {
               onNoMoreTmc={() => {
                 void handleNoMoreTmc();
               }}
+              noMoreTmc={noMoreTmc}
             />
           </ViewportFit>
         )}

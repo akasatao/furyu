@@ -793,6 +793,14 @@ export async function banishForNoMoreTmc(options: {
     name: target.name,
   });
 
+  // 亭主を消す前に次の連衆へ渡す。渡さないと「亭主がいない」で和室が閉じる
+  if (target.isHost) {
+    const nextHost = snapshot.players
+      .filter((p) => p.id !== target.id)
+      .sort(byJoinOrder)[0];
+    if (nextHost) await promoteHost(options.roomId, nextHost.id);
+  }
+
   const writingPlayer =
     snapshot.room.phase === "writing" &&
     snapshot.players.some((p) => p.id === options.playerId);

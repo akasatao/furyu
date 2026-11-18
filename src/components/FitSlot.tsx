@@ -11,6 +11,25 @@ interface FitSlotProps {
   empty?: boolean;
 }
 
+/** ひらがな・カタカナ（小書き含む） */
+const KANA_CHAR =
+  /^[\u3041-\u3096\u30A1-\u30FA\u31F0-\u31FF\uFF66-\uFF9D]$/u;
+/** 単独の濁点。結合文字に揃えて一文字として置く */
+const DAKUTEN_CHAR = /^[\u3099\u309B\uFF9E]$/u;
+
+/**
+ * 「あ゛」のように仮名1字＋濁点だけなら、結合濁点を付けた1文字を返す。
+ * 間隔つきの濁点のまま斜めに置かず、フォントの濁点位置で読めるようにする。
+ * それ以外は null（斜め詰めのまま）。
+ */
+function kanaWithDakuten(text: string): string | null {
+  const chars = [...text];
+  if (chars.length !== 2) return null;
+  if (!KANA_CHAR.test(chars[0]) || !DAKUTEN_CHAR.test(chars[1])) return null;
+  if (chars[1] === "\u3099") return text;
+  return chars[0] + "\u3099";
+}
+
 /**
  * 1枠に文字列を収める。
  * - 1文字: 中央
@@ -24,7 +43,8 @@ export function FitSlot({
   empty = false,
 }: FitSlotProps) {
   const ref = useRef<HTMLSpanElement>(null);
-  const chars = [...text];
+  const voiced = kanaWithDakuten(text);
+  const chars = voiced ? [voiced] : [...text];
 
   useLayoutEffect(() => {
     const el = ref.current;
