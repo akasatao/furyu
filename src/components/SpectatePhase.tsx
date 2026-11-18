@@ -29,29 +29,32 @@ function ShirazuGallery({
   poems: Poem[];
   free: boolean;
 }) {
-  const dense = poems.length >= 5;
+  // スマホは横2枚、PCは横3枚。1枚は執筆の短冊幅（22rem）まで。端数は中央。
   const textClass = free
-    ? dense
-      ? "text-[0.8rem] leading-none tracking-normal"
-      : poems.length >= 4
-        ? "text-[0.95rem] leading-none tracking-normal md:text-base"
-        : "text-[1.15rem] leading-none tracking-normal md:text-[1.35rem]"
-    : dense
-      ? "text-[0.72rem] leading-[1.45] tracking-[0.08em]"
-      : poems.length >= 4
-        ? "text-[0.85rem] leading-[1.55] tracking-[0.12em] md:text-base"
-        : "text-[1.05rem] leading-[1.75] tracking-[0.16em] md:text-[1.35rem] md:tracking-[0.22em]";
+    ? "text-[1.15rem] leading-none tracking-normal md:text-[1.35rem]"
+    : "text-[1.05rem] leading-[1.75] tracking-[0.16em] md:text-[1.35rem] md:tracking-[0.22em]";
+  const single = poems.length <= 1;
 
   return (
     <div
-      className="grid w-full items-stretch gap-2 md:gap-3"
-      style={{ gridTemplateColumns: `repeat(${Math.max(poems.length, 1)}, minmax(0, 1fr))` }}
+      className={`mx-auto flex w-full flex-wrap justify-center ${
+        single
+          ? "max-w-[15rem] md:max-w-[min(22rem,42dvh)]"
+          : "max-w-[34rem] gap-x-2 gap-y-5 md:max-w-[68rem] md:gap-x-4 md:gap-y-8"
+      }`}
     >
       {poems.map((poem) => {
         const owner = shirazuOwnerLabel(poem, null);
         const poemFree = free || poem.shirazuStyle === "free";
         return (
-          <article key={poem.id} className="flex min-w-0 flex-col items-center gap-1.5">
+          <article
+            key={poem.id}
+            className={`flex min-w-0 flex-col items-center gap-1.5 ${
+              single
+                ? "w-full"
+                : "w-[calc(50%-0.25rem)] md:w-[calc((100%-2rem)/3)]"
+            }`}
+          >
             <p className="w-full truncate text-center text-[10px] tracking-widest text-black/55 md:text-xs">
               {owner ?? "句"}
             </p>
@@ -132,7 +135,7 @@ export function SpectatePhase({
   const free = shirazuStyle === "free";
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-6">
       <div className="flex items-center justify-between gap-2 px-1">
         <button
           type="button"

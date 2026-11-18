@@ -41,6 +41,7 @@ import {
   leaveProcessorId,
   leaveRoomOnUnload,
   resetRoomToLobby,
+  setHostPickingTheme as saveHostPickingTheme,
   ROOM_HEARTBEAT_MS,
   startOnlineGame,
   touchRoom,
@@ -87,7 +88,7 @@ import type {
   TurnState,
   VerseMode,
 } from "@/types/game";
-import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
+import { isHostPickingTheme, isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
 
 /** 完成→披露用（長め） */
 const PHASE_FADE_MS = 1100;
@@ -143,6 +144,8 @@ export function GameApp() {
   const [poemHistory, setPoemHistory] = useState<PoemHistoryEntry[]>([]);
   /** お題。空＝なし */
   const [theme, setTheme] = useState("");
+  /** 披露後、亭主が次のお題を考えている */
+  const [hostPickingTheme, setHostPickingTheme] = useState(false);
   /** リレー流派 */
   const [shirazuStyle, setShirazuStyle] = useState<ShirazuStyle>("strict");
 
@@ -296,6 +299,7 @@ export function GameApp() {
       const nextPoems = snapshot.room.poems ?? [];
       setPoems(nextPoems);
       setTurn(snapshot.room.turn);
+      setHostPickingTheme(isHostPickingTheme(snapshot.room.turn));
       setPhase(snapshot.room.phase);
       if (snapshot.room.phase === "reveal" && nextPoems.length > 0) {
         rememberPoems(nextPoems, snapshot.room.theme);
@@ -535,6 +539,7 @@ export function GameApp() {
   const canStamp =
     Boolean(roomId) &&
     phase === "reveal" &&
+    !hostPickingTheme &&
     !(isShirazuRevealTurn(turn) && turn.poemIndex < 0);
   const [stampWasOpen, setStampWasOpen] = useState(canStamp);
   if (stampWasOpen !== canStamp) {
@@ -1118,9 +1123,29 @@ export function GameApp() {
     }
   };
 
-  const handleRematch = async () => {
+  const handlePickingTheme = async (picking: boolean) => {
+    if (!roomId || !myId) return;
+    try {
+      await saveHostPickingTheme({ roomId, hostId: myId, picking });
+    } catch (error) {
+      setErrorMessage(
+        (error as Error).message || "お題の準備を伝えられませんでした。",
+      );
+    }
+  };
+
+  const handleRematch = async (
+    nextTheme: string,
+    next?: { mode: VerseMode; shirazuStyle?: ShirazuStyle },
+  ) => {
+    const themeText = nextTheme.trim().slice(0, THEME_MAX_LENGTH);
+    const verseMode = next?.mode ?? poems[0]?.mode ?? mode;
     // ローカル一人は即リスタート
     if (!roomId && players.length === 1) {
+      if (verseMode === "shirazu") {
+        setErrorMessage("この人数ではそのモードを開けません。");
+        return;
+      }
       clearRevealSeen(
         poems.length > 0
           ? `local:${poems.map((p) => p.id).filter(Boolean).join(",")}`
@@ -1129,7 +1154,8 @@ export function GameApp() {
       startSoloLocal({
         playerId: myId,
         name: displayName,
-        verseMode: poems[0]?.mode ?? mode,
+        verseMode,
+        theme: themeText,
       });
       return;
     }
@@ -1139,7 +1165,13 @@ export function GameApp() {
     setErrorMessage("");
     try {
       clearRevealSeen(roomId);
-      const snapshot = await resetRoomToLobby({ roomId, hostId: myId });
+      const snapshot = await resetRoomToLobby({
+        roomId,
+        hostId: myId,
+        theme: themeText,
+        mode: next?.mode,
+        shirazuStyle: next?.shirazuStyle,
+      });
       applySnapshot(snapshot);
     } catch (error) {
       setErrorMessage((error as Error).message || "もう一度開けませんでした。");
@@ -1335,7 +1367,7 @@ export function GameApp() {
         )}
 
         {phase === "writing" && watching && (
-          <ViewportFit>
+          <ViewportFit minScale={1}>
             <SpectatePhase
               poems={poems}
               theme={theme}
@@ -1448,9 +1480,14 @@ export function GameApp() {
                 (Boolean(me?.isHost) || (!roomId && players.length === 1))
               }
               hostPresent={players.some((p) => p.isHost)}
+              hostPickingTheme={hostPickingTheme}
               isSolo={players.length === 1}
-              onRematch={() => {
-                void handleRematch();
+              playerCount={players.length}
+              onPickingThemeChange={(picking) => {
+                void handlePickingTheme(picking);
+              }}
+              onRematch={(nextTheme, next) => {
+                void handleRematch(nextTheme, next);
               }}
               onHome={() => {
                 void handleLeave();

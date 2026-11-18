@@ -22,7 +22,11 @@ import {
   shirazuPoemForSeat,
   shirazuSeatOf,
 } from "@/lib/shirazu";
-import { modeAllowsSolo, THEME_MAX_LENGTH } from "@/lib/constants";
+import {
+  modeAllowsSolo,
+  PLAYER_COUNT_RANGE,
+  THEME_MAX_LENGTH,
+} from "@/lib/constants";
 import { parseStampPayload, type StampPayload } from "@/lib/stamps";
 import type { Player, ShirazuStyle, TurnState, VerseMode } from "@/types/game";
 import { isLineTurn, isShirazuRevealTurn, isShirazuTurn } from "@/types/game";
@@ -946,13 +950,66 @@ export async function advanceShirazuReveal(options: {
   return loadRoomSnapshot(options.roomId);
 }
 
+/** 披露の結果画面で、亭主が次のお題を考えているあいだだけ true */
+export async function setHostPickingTheme(options: {
+  roomId: string;
+  hostId: string;
+  picking: boolean;
+}): Promise<void> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  if (snapshot.room.host_id !== options.hostId) {
+    throw new Error("亭主だけがお題を選べます。");
+  }
+  if (snapshot.room.phase !== "reveal") return;
+
+  const current = snapshot.room.turn;
+  const turn = options.picking
+    ? isShirazuRevealTurn(current)
+      ? { ...current, pickingTheme: true }
+      : { kind: "theme_pick" as const, pickingTheme: true as const }
+    : isShirazuRevealTurn(current)
+      ? { kind: "shirazu_reveal" as const, poemIndex: current.poemIndex }
+      : null;
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("rooms")
+    .update({ turn })
+    .eq("id", options.roomId)
+    .eq("host_id", options.hostId);
+  if (error) throw error;
+}
+
 export async function resetRoomToLobby(options: {
   roomId: string;
   hostId: string;
+  theme?: string;
+  /** 指定したときだけモードを変える。無ければ今のモードのまま */
+  mode?: VerseMode;
+  shirazuStyle?: ShirazuStyle;
 }): Promise<OnlineRoomSnapshot> {
   const snapshot = await loadRoomSnapshot(options.roomId);
   if (snapshot.room.host_id !== options.hostId) {
     throw new Error("亭主だけがもう一度開けます。");
+  }
+
+  const theme = (options.theme ?? snapshot.room.theme ?? "")
+    .trim()
+    .slice(0, THEME_MAX_LENGTH);
+
+  let mode = snapshot.room.mode;
+  let shirazuStyle = normalizeShirazuStyle(snapshot.room.shirazu_style);
+  if (options.mode) {
+    const { min, max } = PLAYER_COUNT_RANGE[options.mode];
+    const count = snapshot.players.length;
+    if (count < min || count > max) {
+      throw new Error("この人数ではそのモードを開けません。");
+    }
+    mode = options.mode;
+    shirazuStyle =
+      options.mode === "shirazu"
+        ? normalizeShirazuStyle(options.shirazuStyle)
+        : "strict";
   }
 
   const supabase = getSupabase();
@@ -968,6 +1025,9 @@ export async function resetRoomToLobby(options: {
       step_index: 0,
       poems: [],
       turn: null,
+      theme,
+      mode,
+      shirazu_style: shirazuStyle,
     })
     .eq("id", options.roomId);
   if (error) throw error;

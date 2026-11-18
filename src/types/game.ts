@@ -63,9 +63,21 @@ export interface ShirazuRevealState {
   kind: "shirazu_reveal";
   /** -1＝披露前、0..n-1＝披露中の首、n＝gallery（一覧） */
   poemIndex: number;
+  /** 結果画面で亭主が次のお題を考えている */
+  pickingTheme?: boolean;
 }
 
-export type TurnState = LineTurnState | ShirazuTurnState | ShirazuRevealState;
+/** 結果画面で亭主が次のお題を考えている（俳句・短歌） */
+export interface ThemePickState {
+  kind: "theme_pick";
+  pickingTheme: true;
+}
+
+export type TurnState =
+  | LineTurnState
+  | ShirazuTurnState
+  | ShirazuRevealState
+  | ThemePickState;
 
 export function isShirazuTurn(
   turn: TurnState | null | undefined,
@@ -79,11 +91,28 @@ export function isShirazuRevealTurn(
   return turn != null && "kind" in turn && turn.kind === "shirazu_reveal";
 }
 
+export function isThemePickTurn(
+  turn: TurnState | null | undefined,
+): turn is ThemePickState {
+  return turn != null && "kind" in turn && turn.kind === "theme_pick";
+}
+
+/** 披露後、亭主が次のお題を考えている */
+export function isHostPickingTheme(
+  turn: TurnState | null | undefined,
+): boolean {
+  if (isThemePickTurn(turn)) return true;
+  return isShirazuRevealTurn(turn) && turn.pickingTheme === true;
+}
+
 export function isLineTurn(
   turn: TurnState | null | undefined,
 ): turn is LineTurnState {
   return (
-    turn != null && !isShirazuTurn(turn) && !isShirazuRevealTurn(turn)
+    turn != null &&
+    !isShirazuTurn(turn) &&
+    !isShirazuRevealTurn(turn) &&
+    !isThemePickTurn(turn)
   );
 }
 

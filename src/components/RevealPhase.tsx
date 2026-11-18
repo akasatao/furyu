@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TanzakuCard } from "@/components/TanzakuCard";
-import { MODE_LABEL, SHIRAZU_STYLE_LABEL } from "@/lib/constants";
+import {
+  MODE_LABEL,
+  PLAYER_COUNT_RANGE,
+  SHIRAZU_STYLE_LABEL,
+  THEME_MAX_LENGTH,
+  THEME_PROMPTS,
+} from "@/lib/constants";
 import { captureElementPng, downloadPngDataUrl } from "@/lib/export-tanzaku";
 import {
   hasLineRevealSeen,
@@ -11,7 +17,12 @@ import {
   markShirazuRevealStepSeen,
 } from "@/lib/reveal-progress";
 import { shirazuOwnerLabel, toKanji } from "@/lib/utils";
-import type { Poem, ShirazuStyle } from "@/types/game";
+import type { Poem, ShirazuStyle, VerseMode } from "@/types/game";
+
+const VERSE_MODES: VerseMode[] = ["haiku", "tanka", "shirazu"];
+const SHIRAZU_STYLES: ShirazuStyle[] = ["strict", "free"];
+
+type PickerStep = "closed" | "mode" | "style" | "theme";
 
 /** タイトル＋空短冊を出してから書き始めるまでの間 */
 const BEFORE_WRITE_MS = 600;
@@ -36,11 +47,20 @@ interface RevealPhaseProps {
   shirazuStyle?: ShirazuStyle;
   /** 披露演出の既読に使う（再表示で最初から再生しない） */
   roomId?: string | null;
-  onRematch: () => void;
+  /** 今の連衆人数。別モードが開けるかの判定に使う */
+  playerCount?: number;
+  onRematch: (
+    theme: string,
+    next?: { mode: VerseMode; shirazuStyle?: ShirazuStyle },
+  ) => void;
+  /** お題フォームを開いた／閉じた。連衆・観戦の表示用 */
+  onPickingThemeChange?: (picking: boolean) => void;
   onHome: () => void;
   canRematch?: boolean;
   /** 亭主が部屋に残っている（もう一度待ち表示の可否） */
   hostPresent?: boolean;
+  /** 亭主が次の宴（モードやお題）を考えている。連衆・観戦は別画面 */
+  hostPickingTheme?: boolean;
   isSolo?: boolean;
   /** false のあいだは短冊枠のみ。true になってから文字の書き出し開始 */
   revealReady?: boolean;
@@ -60,10 +80,13 @@ export function RevealPhase({
   theme = "",
   shirazuStyle = "strict",
   roomId = null,
+  playerCount = 1,
   onRematch,
+  onPickingThemeChange,
   onHome,
   canRematch = true,
   hostPresent = true,
+  hostPickingTheme = false,
   isSolo = false,
   revealReady = false,
   revealPoemIndex = null,
@@ -98,6 +121,13 @@ export function RevealPhase({
   /** 一覧で披露アニメを再生中の句 */
   const [replayingId, setReplayingId] = useState<string | null>(null);
   const [replayNonce, setReplayNonce] = useState(0);
+  const [pickerStep, setPickerStep] = useState<PickerStep>("closed");
+  /** 別モードで進むときだけ入る。同じモードの再宴では null */
+  const [nextMode, setNextMode] = useState<VerseMode | null>(null);
+  const [nextStyle, setNextStyle] = useState<ShirazuStyle>("strict");
+  const [themeDraft, setThemeDraft] = useState(theme);
+  const themeInputRef = useRef<HTMLInputElement>(null);
+  const restoredPicker = useRef(false);
 
   const poemCount = poems.length;
   /** ソロ披露など roomId が無いときの既読キー */
@@ -205,6 +235,124 @@ export function RevealPhase({
     setReplayingId(poemId);
     setReplayNonce((n) => n + 1);
   }, []);
+
+  const currentMode = poems[0]?.mode;
+  const alternateModes = VERSE_MODES.filter((candidate) => {
+    if (!currentMode || candidate === currentMode) return false;
+    const range = PLAYER_COUNT_RANGE[candidate];
+    return playerCount >= range.min && playerCount <= range.max;
+  });
+  const pickingTheme = pickerStep === "theme";
+
+  const beginHostPick = () => {
+    restoredPicker.current = true;
+    onPickingThemeChange?.(true);
+  };
+
+  const openThemePicker = () => {
+    setNextMode(null);
+    setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
+    setPickerStep("theme");
+    beginHostPick();
+  };
+
+  const openModePicker = () => {
+    setNextMode(null);
+    setPickerStep("mode");
+    beginHostPick();
+  };
+
+  const closePickers = () => {
+    if (advancing) return;
+    setPickerStep("closed");
+    setNextMode(null);
+    onPickingThemeChange?.(false);
+  };
+
+  const backFromTheme = () => {
+    if (advancing) return;
+    if (!nextMode) {
+      closePickers();
+      return;
+    }
+    setPickerStep(nextMode === "shirazu" ? "style" : "mode");
+  };
+
+  const selectAlternateMode = (mode: VerseMode) => {
+    if (advancing) return;
+    setNextMode(mode);
+    if (mode === "shirazu") {
+      setPickerStep("style");
+      return;
+    }
+    setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
+    setPickerStep("theme");
+  };
+
+  const selectShirazuStyle = (style: ShirazuStyle) => {
+    if (advancing) return;
+    setNextStyle(style);
+    setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
+    setPickerStep("theme");
+  };
+
+  useEffect(() => {
+    if (!canRematch || !hostPickingTheme || restoredPicker.current) return;
+    restoredPicker.current = true;
+    setNextMode(null);
+    setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
+    setPickerStep("theme");
+  }, [canRematch, hostPickingTheme, theme]);
+
+  useEffect(() => {
+    if (!pickingTheme) return;
+    themeInputRef.current?.focus();
+  }, [pickingTheme]);
+
+  const pickRandomTheme = () => {
+    if (THEME_PROMPTS.length === 0 || advancing) return;
+    let next = THEME_PROMPTS[Math.floor(Math.random() * THEME_PROMPTS.length)];
+    if (THEME_PROMPTS.length > 1) {
+      let guard = 0;
+      while (next === themeDraft && guard < 8) {
+        next = THEME_PROMPTS[Math.floor(Math.random() * THEME_PROMPTS.length)];
+        guard += 1;
+      }
+    }
+    setThemeDraft(next);
+  };
+
+  const confirmTheme = () => {
+    if (advancing) return;
+    const next = themeDraft.trim().slice(0, THEME_MAX_LENGTH);
+    setThemeDraft(next);
+    onRematch(
+      next,
+      nextMode
+        ? {
+            mode: nextMode,
+            shirazuStyle: nextMode === "shirazu" ? nextStyle : undefined,
+          }
+        : undefined,
+    );
+  };
+
+  if (!canRematch && hostPickingTheme) {
+    return (
+      <div className="mx-auto flex min-h-[calc(100dvh-1rem)] w-full max-w-md flex-col items-center justify-center gap-8 px-4">
+        <p className="text-center text-xl tracking-[0.28em] md:text-3xl">
+          亭主が次の宴を準備しています
+        </p>
+        <button
+          type="button"
+          onClick={onHome}
+          className="brush-btn-outline w-full max-w-xs px-4 py-3 text-sm tracking-widest"
+        >
+          玄関へ戻る
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 md:max-w-3xl md:gap-8">
@@ -406,13 +554,121 @@ export function RevealPhase({
       {showActions && (
         <div className="flex w-full shrink-0 flex-col gap-2">
           {canRematch ? (
-            <button
-              type="button"
-              onClick={onRematch}
-              className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
-            >
-              {isSolo ? "もう一度詠む" : "再び宴を開く"}
-            </button>
+            pickerStep === "theme" ? (
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={themeInputRef}
+                  type="text"
+                  value={themeDraft}
+                  maxLength={THEME_MAX_LENGTH}
+                  enterKeyHint="done"
+                  disabled={advancing}
+                  onChange={(e) => setThemeDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                    if (e.key === "Enter") confirmTheme();
+                  }}
+                  className="brush-input w-full px-4 py-3 text-center text-xl tracking-[0.2em] md:py-[clamp(0.75rem,2dvh,1rem)] md:text-2xl"
+                />
+                <button
+                  type="button"
+                  disabled={advancing}
+                  onClick={pickRandomTheme}
+                  className="brush-btn-outline w-full px-4 py-2.5 text-sm tracking-[0.35em]"
+                >
+                  ランダムなお題
+                </button>
+                <button
+                  type="button"
+                  disabled={advancing}
+                  onClick={confirmTheme}
+                  className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                >
+                  {advancing
+                    ? "開き中…"
+                    : themeDraft.trim()
+                      ? "このお題で進む"
+                      : "お題なしで進む"}
+                </button>
+                <button
+                  type="button"
+                  disabled={advancing}
+                  onClick={backFromTheme}
+                  className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+                >
+                  戻る
+                </button>
+              </div>
+            ) : pickerStep === "mode" ? (
+              <div className="flex flex-col gap-2">
+                <p className="py-1 text-center text-sm tracking-widest text-black/55">
+                  モードを選ぶ
+                </p>
+                {alternateModes.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    disabled={advancing}
+                    onClick={() => selectAlternateMode(mode)}
+                    className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                  >
+                    {MODE_LABEL[mode]}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={advancing}
+                  onClick={closePickers}
+                  className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+                >
+                  戻る
+                </button>
+              </div>
+            ) : pickerStep === "style" ? (
+              <div className="flex flex-col gap-2">
+                <p className="py-1 text-center text-sm tracking-widest text-black/55">
+                  どう詠む？
+                </p>
+                {SHIRAZU_STYLES.map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    disabled={advancing}
+                    onClick={() => selectShirazuStyle(style)}
+                    className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                  >
+                    {SHIRAZU_STYLE_LABEL[style]}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={advancing}
+                  onClick={() => setPickerStep("mode")}
+                  className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+                >
+                  戻る
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={openThemePicker}
+                  className="brush-btn w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                >
+                  {isSolo ? "もう一度詠む" : "再び宴を開く"}
+                </button>
+                {alternateModes.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={openModePicker}
+                    className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                  >
+                    {isSolo ? "別のモードで詠む" : "別のモードで"}
+                  </button>
+                ) : null}
+              </>
+            )
           ) : hostPresent ? (
             <p className="py-3 text-center text-sm tracking-widest text-black/45">
               亭主がもう一度開くのを待っています
