@@ -127,6 +127,45 @@ function sleep(ms: number) {
   });
 }
 
+type RoomClock = {
+  roomId: string;
+  step: number;
+  phase: GamePhase;
+  /** ロビーに戻ったあと、前の対局の遅れ読みを捨てる */
+  holdLobby: boolean;
+};
+
+/** 遅れて届いた部屋読みで、渡した短冊を手元に戻さない */
+function isStaleRoomSnapshot(
+  clock: RoomClock,
+  snapshot: OnlineRoomSnapshot,
+): boolean {
+  const phase = snapshot.room.phase;
+  const step = snapshot.room.step_index ?? 0;
+  if (clock.roomId !== snapshot.room.id) return false;
+  if (phase === "lobby") return false;
+  if (clock.holdLobby && step !== 0) return true;
+  return (
+    (clock.phase === "writing" || clock.phase === "reveal") &&
+    (phase === "writing" || phase === "reveal") &&
+    step < clock.step
+  );
+}
+
+function noteRoomSnapshot(clock: RoomClock, snapshot: OnlineRoomSnapshot) {
+  const phase = snapshot.room.phase;
+  const step = snapshot.room.step_index ?? 0;
+  clock.roomId = snapshot.room.id;
+  clock.phase = phase;
+  if (phase === "lobby") {
+    clock.step = 0;
+    clock.holdLobby = true;
+    return;
+  }
+  if (step === 0) clock.holdLobby = false;
+  clock.step = step;
+}
+
 export function GameApp() {
   const [phase, setPhase] = useState<GamePhase>("home");
   const [nickname, setNickname] = useState("");
@@ -203,6 +242,13 @@ export function GameApp() {
   const enterRevealFromWritingRef = useRef<
     (snapshot: OnlineRoomSnapshot) => Promise<void>
   >(async () => {});
+  /** 部屋読みの新旧。遅れた取得で短冊を戻さない */
+  const roomClockRef = useRef<RoomClock>({
+    roomId: "",
+    step: -1,
+    phase: "home",
+    holdLobby: false,
+  });
   /** 破門されたときに中央へ大きく出す */
   const [banished, setBanished] = useState(false);
 
@@ -296,6 +342,8 @@ export function GameApp() {
 
   const applySnapshot = useCallback(
     (snapshot: OnlineRoomSnapshot) => {
+      if (isStaleRoomSnapshot(roomClockRef.current, snapshot)) return;
+      noteRoomSnapshot(roomClockRef.current, snapshot);
       setRoomId(snapshot.room.id);
       setMode(snapshot.room.mode);
       setPlayerCount(snapshot.room.max_players);
@@ -394,6 +442,12 @@ export function GameApp() {
   const watchRoom = useCallback(
     (id: string) => {
       clearSubscription();
+      roomClockRef.current = {
+        roomId: "",
+        step: -1,
+        phase: "home",
+        holdLobby: false,
+      };
       subRef.current = subscribeOnlineRoom(
         id,
         (snapshot) => {
