@@ -15,6 +15,9 @@ import { clampText } from "@/lib/utils";
 
 /** 画面を横切る基準時間。長い文も同じ速さで、追いつかない */
 const CROSS_MS = 7500;
+/** 狭い画面は同じ時間だと遅く見えるので、短く横切る */
+const NARROW_CROSS_MS = 2600;
+const NARROW_WIDTH_PX = 768;
 const SEND_GAP_MS = 800;
 
 interface FlyerItem {
@@ -45,7 +48,7 @@ function laneMetrics(): { top: number; laneH: number; count: number } {
   return { top, laneH, count };
 }
 
-/** 同じ段の前のコメントの尻が右端を抜けてから、次を出す */
+/** 同じ段の前のコメントの尻が左端を抜けてから、次を出す */
 function reserveLane(
   lanes: number[],
   width: number,
@@ -55,7 +58,9 @@ function reserveLane(
     lanes.length = 0;
     for (let i = 0; i < count; i += 1) lanes.push(0);
   }
-  const speed = (window.innerWidth + 180) / CROSS_MS;
+  const crossMs =
+    window.innerWidth < NARROW_WIDTH_PX ? NARROW_CROSS_MS : CROSS_MS;
+  const speed = (window.innerWidth + 180) / crossMs;
   const duration = (window.innerWidth + width) / speed;
   const occupy = (width + 40) / speed;
   const now = performance.now();
@@ -100,7 +105,7 @@ function Flyer({
     const anim = el.animate(
       [
         { transform: "translate3d(0, 0, 0)" },
-        { transform: `translate3d(-${distance}px, 0, 0)` },
+        { transform: `translate3d(${distance}px, 0, 0)` },
       ],
       {
         duration: item.duration,
@@ -121,7 +126,7 @@ function Flyer({
   return (
     <div
       ref={ref}
-      className="absolute left-full whitespace-nowrap text-lg leading-none md:text-xl"
+      className="absolute right-full whitespace-nowrap text-lg leading-none md:text-xl"
       style={{
         top: item.top,
         textShadow:
@@ -383,7 +388,7 @@ export function NicoChat({ roomId, playerId, name }: NicoChatProps) {
               logOpen ? "is-on" : ""
             }`}
           >
-            ログ{chats.length > 0 ? ` ${chats.length}` : ""}
+            ログ
           </button>
           <input
             type="text"
