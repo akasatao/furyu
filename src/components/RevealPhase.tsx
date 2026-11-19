@@ -26,6 +26,14 @@ type PickerStep = "closed" | "mode" | "style" | "theme";
 
 /** タイトル＋空短冊を出してから書き始めるまでの間 */
 const BEFORE_WRITE_MS = 600;
+const BULK_SHARE_ID = "__bulk__";
+
+/** リレーのまとめ画像。2首と4首は2列、それ以外は3列にして縦に伸ばさない */
+function shirazuShareColumns(count: number): number {
+  if (count <= 2) return Math.max(count, 1);
+  if (count === 4) return 2;
+  return 3;
+}
 
 function PlayIcon() {
   return (
@@ -103,6 +111,7 @@ export function RevealPhase({
         : "strict"
     ];
   const bulkCaptureRef = useRef<HTMLDivElement>(null);
+  const shirazuBulkRef = useRef<HTMLDivElement>(null);
   const poemCaptureRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const [shareOpen, setShareOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -158,6 +167,7 @@ export function RevealPhase({
     (revealReady ||
       (revealPoemIndex != null && revealPoemIndex >= poemCount));
   const showActions = !isShirazu || showGallery;
+  const bulkColumns = shirazuShareColumns(poems.length);
 
   useEffect(() => {
     if (presentIndex == null) {
@@ -213,6 +223,11 @@ export function RevealPhase({
       MODE_LABEL[poems[0]?.mode === "shirazu" ? "haiku" : poems[0].mode];
     await openSharePreview(bulkCaptureRef.current, `風流_${label}.png`);
   }, [openSharePreview, poems]);
+
+  const handleOpenShirazuBulkShare = useCallback(async () => {
+    setSharingPoemId(BULK_SHARE_ID);
+    await openSharePreview(shirazuBulkRef.current, "風流_まとめ.png");
+  }, [openSharePreview]);
 
   const handleOpenPoemShare = useCallback(
     async (poem: Poem) => {
@@ -540,6 +555,20 @@ export function RevealPhase({
                   </div>
                 );
               })}
+              {poems.length > 1 ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    void handleOpenShirazuBulkShare();
+                  }}
+                  className="brush-btn-outline w-full max-w-[15rem] px-4 py-3 text-base tracking-[0.25em] md:max-w-[min(22rem,42dvh)]"
+                >
+                  {busy && sharingPoemId === BULK_SHARE_ID
+                    ? "画像を用意中…"
+                    : "まとめて共有"}
+                </button>
+              ) : null}
             </div>
           )}
 
@@ -584,6 +613,35 @@ export function RevealPhase({
             {poems.map((poem) => (
               <div key={`capture-bulk-${poem.id}`} className="w-[22rem]">
                 <TanzakuCard poem={poem} still />
+              </div>
+            ))}
+          </div>
+        )}
+        {isShirazu && (
+          <div
+            ref={shirazuBulkRef}
+            className="flex flex-wrap justify-center bg-white"
+            style={{
+              boxSizing: "border-box",
+              gap: "1.25rem",
+              padding: "1.5rem",
+              width: `calc(15rem * ${bulkColumns} + 1.25rem * ${Math.max(bulkColumns - 1, 0)} + 3rem + 2px)`,
+            }}
+          >
+            {poems.map((poem) => (
+              <div
+                key={`bulk-${poem.id}`}
+                className="flex w-[15rem] flex-col items-center [&_article]:!w-full [&_article]:!max-w-[15rem]"
+              >
+                <p className="mb-2 text-center text-base tracking-[0.28em]">
+                  {shirazuOwnerLabel(poem, myId) ?? "名無しの句"}
+                </p>
+                <TanzakuCard
+                  poem={poem}
+                  anonymous
+                  still
+                  viewerId={myId}
+                />
               </div>
             ))}
           </div>
@@ -763,7 +821,7 @@ export function RevealPhase({
           onClick={handleCloseShare}
         >
           <div
-            className="brush-box flex w-full max-w-sm flex-col gap-4 bg-white p-4"
+            className="brush-box flex w-full max-w-4xl flex-col gap-4 bg-white p-4"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-center text-sm tracking-widest text-black/60">

@@ -15,53 +15,155 @@ export function isNoMoreTmcBanish(error: unknown): boolean {
 
 type Mora = "ta" | "ma" | "ki" | "chi" | "other";
 
-const SMALL_KANA = new Set(["ゃ", "ゅ", "ょ", "ャ", "ュ", "ョ"]);
+const YOON = new Set(["ゃ", "ゅ", "ょ", "ャ", "ュ", "ョ"]);
+
+/** 音の区切り。音節の中の文字はくっつけたまま見る */
+function isGap(ch: string): boolean {
+  return (
+    ch === " " ||
+    ch === "\t" ||
+    ch === "\n" ||
+    ch === "\r" ||
+    ch === "\u3000" ||
+    ch === "-" ||
+    ch === "－" ||
+    ch === "_" ||
+    ch === "＿" ||
+    ch === "・" ||
+    ch === "･"
+  );
+}
+
+function isDakuten(ch: string): boolean {
+  if (!ch) return false;
+  // 「゛」の NFKC は空白＋結合濁点になる
+  for (const part of ch.normalize("NFKC")) {
+    if (
+      part === "\u3099" ||
+      part === "\u309A" ||
+      part === "゛" ||
+      part === "゜"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 半角カナは全角へ。それ以外はそのまま */
+function kanaAt(text: string, index: number): string {
+  const ch = text[index] ?? "";
+  const code = ch.codePointAt(0) ?? 0;
+  if (code >= 0xff61 && code <= 0xff9f) return ch.normalize("NFKC");
+  return ch;
+}
+
+/** 英字だけ小文字の a-z にする。全角英字も含む。かなは空 */
+function latinAt(text: string, index: number): string {
+  const code = text.codePointAt(index) ?? 0;
+  if (code >= 0xff21 && code <= 0xff3a) {
+    return String.fromCharCode(code - 0xff21 + 0x61);
+  }
+  if (code >= 0xff41 && code <= 0xff5a) {
+    return String.fromCharCode(code - 0xff41 + 0x61);
+  }
+  if (code >= 0x41 && code <= 0x5a) return String.fromCharCode(code + 0x20);
+  if (code >= 0x61 && code <= 0x7a) return String.fromCharCode(code);
+  return "";
+}
+
+const ROMAJI: readonly [string, Mora][] = [
+  ["chi", "chi"],
+  ["ta", "ta"],
+  ["ma", "ma"],
+  ["ki", "ki"],
+  ["ti", "chi"],
+];
+
+function matchRomaji(
+  text: string,
+  index: number,
+): { kind: Mora; end: number } | null {
+  for (const [pattern, kind] of ROMAJI) {
+    let ok = true;
+    for (let k = 0; k < pattern.length; k += 1) {
+      if (latinAt(text, index + k) !== pattern[k]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return { kind, end: index + pattern.length };
+  }
+  return null;
+}
 
 /**
- * ひらがな・カタカナ・玉／木を音へ揃える。
- * き／ちの直後が拗音の小書きなら、その二文字は ki / chi にしない。
+ * かな・半角カナ・ローマ字・玉／木を ta / ma / ki / chi に揃える。
+ * chi は「ち」のほか、chi・ti・てぃ。
+ * き／ちの拗音、濁点付きは別の音にする。
  */
 function moraTokens(text: string): { kind: Mora; end: number }[] {
   const tokens: { kind: Mora; end: number }[] = [];
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i] ?? "";
-    const next = text[i + 1] ?? "";
-    if (
-      (ch === "き" || ch === "キ" || ch === "ち" || ch === "チ") &&
-      SMALL_KANA.has(next)
-    ) {
-      tokens.push({ kind: "other", end: i + 2 });
+  let i = 0;
+  while (i < text.length) {
+    if (isGap(text[i] ?? "")) {
       i += 1;
       continue;
     }
-    if (ch === "た" || ch === "タ") {
-      tokens.push({ kind: "ta", end: i + 1 });
-      continue;
-    }
-    if (ch === "ま" || ch === "マ") {
-      tokens.push({ kind: "ma", end: i + 1 });
-      continue;
-    }
-    if (ch === "き" || ch === "キ" || ch === "木") {
-      tokens.push({ kind: "ki", end: i + 1 });
-      continue;
-    }
-    if (ch === "ち" || ch === "チ") {
-      tokens.push({ kind: "chi", end: i + 1 });
-      continue;
-    }
-    if (ch === "玉") {
+    if ((text[i] ?? "") === "玉") {
       const end = i + 1;
       tokens.push({ kind: "ta", end }, { kind: "ma", end });
+      i = end;
       continue;
     }
-    tokens.push({ kind: "other", end: i + 1 });
+
+    const ch = kanaAt(text, i);
+    const next = kanaAt(text, i + 1);
+    let mora: { kind: Mora; end: number } | null = null;
+    if (
+      (ch === "き" || ch === "キ" || ch === "ち" || ch === "チ") &&
+      YOON.has(next)
+    ) {
+      mora = { kind: "other", end: i + 2 };
+    } else if ((ch === "て" || ch === "テ") && (next === "ぃ" || next === "ィ")) {
+      mora = { kind: "chi", end: i + 2 };
+    } else if (
+      (ch === "た" ||
+        ch === "タ" ||
+        ch === "ま" ||
+        ch === "マ" ||
+        ch === "き" ||
+        ch === "キ" ||
+        ch === "ち" ||
+        ch === "チ" ||
+        ch === "て" ||
+        ch === "テ") &&
+      isDakuten(text[i + 1] ?? "")
+    ) {
+      mora = { kind: "other", end: i + 2 };
+    } else {
+      mora = matchRomaji(text, i);
+    }
+
+    if (!mora) {
+      if (ch === "た" || ch === "タ") mora = { kind: "ta", end: i + 1 };
+      else if (ch === "ま" || ch === "マ") mora = { kind: "ma", end: i + 1 };
+      else if (ch === "き" || ch === "キ" || ch === "木") {
+        mora = { kind: "ki", end: i + 1 };
+      } else if (ch === "ち" || ch === "チ") mora = { kind: "chi", end: i + 1 };
+      else mora = { kind: "other", end: i + 1 };
+    }
+
+    if (mora.end <= i) mora = { kind: "other", end: i + 1 };
+    tokens.push(mora);
+    i = mora.end;
   }
   return tokens;
 }
 
 /**
- * `before` の続きとして `added` を送ると、たまき／たまち（表記ゆれ含む）が完成するか。
+ * `before` の続きとして `added` を送ると、たまき／たまちが完成するか。
+ * かな、半角カナ、玉／木、Tamachi・たまchi・たまti などの混植を同じ三音と見る。
  * すでに完成していた並びだけでは破門しない。
  */
 export function completesForbiddenName(before: string, added: string): boolean {

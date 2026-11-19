@@ -1083,6 +1083,9 @@ export async function resetRoomToLobby(options: {
         : "strict";
   }
 
+  // 開宴で実人数まで縮めた定員を、そのモードの上限へ戻す
+  const maxPlayers = PLAYER_COUNT_RANGE[mode].max;
+
   const supabase = getSupabase();
   await supabase
     .from("room_players")
@@ -1099,6 +1102,7 @@ export async function resetRoomToLobby(options: {
       theme,
       mode,
       shirazu_style: shirazuStyle,
+      max_players: maxPlayers,
       no_more_tmc: false,
     })
     .eq("id", options.roomId);
@@ -1113,6 +1117,7 @@ export async function resetRoomToLobby(options: {
         theme,
         mode,
         shirazu_style: shirazuStyle,
+        max_players: maxPlayers,
       })
       .eq("id", options.roomId);
     if (legacyError) throw legacyError;

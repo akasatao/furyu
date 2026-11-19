@@ -123,3 +123,37 @@ begin
   exception when duplicate_object then null;
   end;
 end $$;
+
+-- 和室のコメント。部屋を消すと一緒に消える
+create table if not exists public.room_chats (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null references public.rooms (id) on delete cascade,
+  player_id text not null,
+  name text not null,
+  body text not null,
+  created_at timestamptz not null default now(),
+  constraint room_chats_name_len check (char_length(name) between 1 and 24),
+  constraint room_chats_body_len check (char_length(body) between 1 and 40)
+);
+
+create index if not exists room_chats_room_created_idx
+  on public.room_chats (room_id, created_at);
+
+alter table public.room_chats enable row level security;
+
+drop policy if exists room_chats_select on public.room_chats;
+drop policy if exists room_chats_insert on public.room_chats;
+create policy room_chats_select on public.room_chats for select using (true);
+create policy room_chats_insert on public.room_chats for insert with check (true);
+
+grant select, insert on public.room_chats to anon, authenticated;
+
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.room_chats;
+  exception when duplicate_object then null;
+  end;
+end $$;
+
+notify pgrst, 'reload schema';

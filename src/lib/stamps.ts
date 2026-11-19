@@ -1,12 +1,13 @@
 /** 披露で飛ばせるスタンプ */
-export type StampId = "good" | "bad" | "furyu";
+export type StampId = "good" | "bad" | "furyu" | "question";
 
-export const STAMP_IDS: StampId[] = ["good", "bad", "furyu"];
+export const STAMP_IDS: StampId[] = ["good", "bad", "question", "furyu"];
 
 export const STAMP_LABEL: Record<StampId, string> = {
   good: "いいね",
   bad: "いまいち",
   furyu: "風流",
+  question: "？",
 };
 
 export interface StampPayload {

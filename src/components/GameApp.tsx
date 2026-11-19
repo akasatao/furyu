@@ -53,6 +53,7 @@ import {
   type OnlineRoomSubscription,
 } from "@/lib/online/rooms";
 import type { StampId } from "@/lib/stamps";
+import { NicoChat } from "@/components/NicoChat";
 import { StampBalloons, type StampBalloon } from "@/components/StampBalloons";
 import { StampPicker } from "@/components/StampPicker";
 import type { OnlineRoomSnapshot } from "@/lib/online/types";
@@ -1371,7 +1372,11 @@ export function GameApp() {
       >
         {APP_VERSION}
       </p>
-      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-2 md:max-w-5xl md:px-8 md:py-3">
+      <main
+        className={`relative z-10 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 pt-2 md:max-w-5xl md:px-8 md:pt-3 ${
+          roomId && phase !== "home" ? "pb-24" : "pb-2 md:pb-3"
+        }`}
+      >
         {phase === "home" && (
           <HomeScreen
             key={homeStep}
@@ -1569,6 +1574,19 @@ export function GameApp() {
 
         {canStamp && <StampPicker onSelect={handleStamp} />}
       </main>
+
+      {roomId && myId && phase !== "home" ? (
+        <NicoChat
+          key={roomId}
+          roomId={roomId}
+          playerId={myId}
+          name={
+            players.find((p) => p.id === myId)?.name ||
+            spectators.find((p) => p.id === myId)?.name ||
+            displayName
+          }
+        />
+      ) : null}
 
       {canStamp && <StampBalloons balloons={balloons} onDone={removeBalloon} />}
 

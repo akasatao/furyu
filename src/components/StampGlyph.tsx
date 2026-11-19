@@ -8,7 +8,13 @@ interface StampGlyphProps {
   small?: boolean;
 }
 
-/** スタンプ本体。👍👎は絵文字、風流は縦書きの判子風 */
+const MARK: Record<Exclude<StampId, "furyu">, string> = {
+  good: "👍",
+  bad: "👎",
+  question: "？",
+};
+
+/** スタンプ本体。👍👎？は文字、風流は縦書きの判子風 */
 export function StampGlyph({ stamp, small = false }: StampGlyphProps) {
   if (stamp === "furyu") {
     return (
@@ -29,7 +35,7 @@ export function StampGlyph({ stamp, small = false }: StampGlyphProps) {
         small ? "text-2xl" : "text-4xl md:text-5xl"
       }`}
     >
-      {stamp === "good" ? "👍" : "👎"}
+      {MARK[stamp]}
     </span>
   );
 }
