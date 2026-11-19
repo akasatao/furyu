@@ -48,7 +48,10 @@ function laneMetrics(): { top: number; laneH: number; count: number } {
   return { top, laneH, count };
 }
 
-/** 同じ段の前のコメントの尻が左端を抜けてから、次を出す */
+/**
+ * 空いている段からランダムに取る。画面に残っている段は避ける。
+ * 全部ふさがっているときだけ、最初に空く段を待つ。
+ */
 function reserveLane(
   lanes: number[],
   width: number,
@@ -62,24 +65,24 @@ function reserveLane(
     window.innerWidth < NARROW_WIDTH_PX ? NARROW_CROSS_MS : CROSS_MS;
   const speed = (window.innerWidth + 180) / crossMs;
   const duration = (window.innerWidth + width) / speed;
-  const occupy = (width + 40) / speed;
   const now = performance.now();
-  let lane = 0;
-  let best = Infinity;
+  const free: number[] = [];
+  let soonest = 0;
+  let soonestAt = Infinity;
   for (let i = 0; i < count; i += 1) {
     const at = lanes[i] ?? 0;
-    if (at <= now) {
-      lane = i;
-      best = now;
-      break;
-    }
-    if (at < best) {
-      best = at;
-      lane = i;
+    if (at <= now) free.push(i);
+    if (at < soonestAt) {
+      soonestAt = at;
+      soonest = i;
     }
   }
-  const start = Math.max(now, best);
-  lanes[lane] = start + occupy;
+  const lane =
+    free.length > 0
+      ? (free[Math.floor(Math.random() * free.length)] ?? 0)
+      : soonest;
+  const start = free.length > 0 ? now : Math.max(now, soonestAt);
+  lanes[lane] = start + duration;
   return { top: top + lane * laneH, duration, delay: start - now };
 }
 
