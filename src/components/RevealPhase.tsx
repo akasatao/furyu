@@ -74,7 +74,7 @@ interface RevealPhaseProps {
   canRematch?: boolean;
   /** 亭主が部屋に残っている（もう一度待ち表示の可否） */
   hostPresent?: boolean;
-  /** 亭主が次の宴（モードやお題）を考えている。連衆・観戦は別画面 */
+  /** 亭主が次の宴を考えているあいだ、上に通知を出し続ける */
   hostPickingTheme?: boolean;
   isSolo?: boolean;
   /** false のあいだは短冊枠のみ。true になってから文字の書き出し開始 */
@@ -606,7 +606,7 @@ export function RevealPhase({
                 >
                   {busy && sharingPoemId === BULK_SHARE_ID
                     ? "画像を用意中…"
-                    : "まとめて共有"}
+                    : "まとめてシェア"}
                 </button>
               ) : null}
             </div>
@@ -889,23 +889,12 @@ export function RevealPhase({
       {typeof document !== "undefined" && !canRematch && hostPickingTheme
         ? createPortal(
             <div
-              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4"
-              role="dialog"
-              aria-modal="true"
-              aria-label="次の宴の準備"
+              role="status"
+              className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex justify-center px-4 pt-10 md:pt-12"
             >
-              <section className="brush-box w-full max-w-sm bg-white p-5">
-                <p className="text-center text-lg tracking-[0.18em] md:text-xl">
-                  亭主が次の宴を準備しています
-                </p>
-                <button
-                  type="button"
-                  onClick={onHome}
-                  className="brush-btn-outline mt-5 w-full px-4 py-3 text-sm tracking-widest"
-                >
-                  玄関へ戻る
-                </button>
-              </section>
+              <p className="toast-drop-in max-w-md border-2 border-black bg-white px-4 py-2.5 text-center text-sm tracking-wider shadow-[2px_2px_0_#000]">
+                亭主が次の宴を準備しています
+              </p>
             </div>,
             document.body,
           )

@@ -49,11 +49,6 @@ export function ShirazuLineSlots({
     const container = containerRef.current;
     if (!container) return;
     const els = container.querySelectorAll<HTMLElement>("[data-free-slot]");
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      for (const el of Array.from(els)) el.style.clipPath = "none";
-      return;
-    }
-
     const animations = Array.from(els).map((el, i) =>
       el.animate(
         [

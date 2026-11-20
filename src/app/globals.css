@@ -192,9 +192,3 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tanzaku-line {
-    animation: none;
-  }
-}
-
