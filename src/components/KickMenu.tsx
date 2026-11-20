@@ -2,14 +2,33 @@
 
 import { useState } from "react";
 import { FitText } from "@/components/FitText";
-import type { Player } from "@/types/game";
+import {
+  isLineTurn,
+  isShirazuTurn,
+  type Player,
+  type TurnState,
+} from "@/types/game";
+
+/** その人の今の手番で、まだ文字を送っていない */
+function isComposing(playerId: string, turn: TurnState | null): boolean {
+  if (isShirazuTurn(turn)) return !turn.submittedIds.includes(playerId);
+  if (isLineTurn(turn)) {
+    return turn.writerId === playerId && turn.status !== "submitted";
+  }
+  return false;
+}
 
 interface KickMenuProps {
   players: Player[];
   spectators?: Player[];
   myId: string;
+  turn?: TurnState | null;
   busy?: boolean;
   onKick: (playerId: string) => void;
+  /** この宴が終わるまで再参加できない */
+  onSuperKick: (playerId: string) => void;
+  /** 連衆へ亭主を渡す。観戦には渡せない */
+  onTransferHost: (playerId: string) => void;
   /** 亭主が和室を閉じる（全員が元の画面へ戻る） */
   onCloseRoom: () => void;
 }
@@ -21,8 +40,11 @@ export function KickMenu({
   players,
   spectators = [],
   myId,
+  turn = null,
   busy = false,
   onKick,
+  onSuperKick,
+  onTransferHost,
   onCloseRoom,
 }: KickMenuProps) {
   const [open, setOpen] = useState(false);
@@ -66,7 +88,7 @@ export function KickMenu({
                 {others.map(({ player: p, watching }) => (
                   <li
                     key={p.id}
-                    className="flex items-center gap-3 border-2 border-black px-3 py-2"
+                    className="flex flex-wrap items-center gap-3 border-2 border-black px-3 py-2"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                       <div className="min-w-0 flex-1">
@@ -76,21 +98,63 @@ export function KickMenu({
                         <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
                           観戦
                         </span>
+                      ) : isComposing(p.id, turn) ? (
+                        <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
+                          作句中
+                        </span>
                       ) : null}
                     </div>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        if (window.confirm("破門しますか？")) {
-                          onKick(p.id);
-                          setOpen(false);
-                        }
-                      }}
-                      className="shrink-0 border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
-                    >
-                      破門
-                    </button>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          if (window.confirm("破門しますか？")) {
+                            onKick(p.id);
+                            setOpen(false);
+                          }
+                        }}
+                        className="border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+                      >
+                        破門
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "超破門しますか？ この宴が終わるまで再参加できません。",
+                            )
+                          ) {
+                            onSuperKick(p.id);
+                            setOpen(false);
+                          }
+                        }}
+                        className="border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+                      >
+                        超破門
+                      </button>
+                      {!watching ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `亭主を${p.name}さんに譲渡しますか？`,
+                              )
+                            ) {
+                              onTransferHost(p.id);
+                              setOpen(false);
+                            }
+                          }}
+                          className="border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+                        >
+                          譲渡
+                        </button>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>

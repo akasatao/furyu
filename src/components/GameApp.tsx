@@ -40,6 +40,7 @@ import {
   handOverAndRemove,
   joinOnlineRoom,
   kickOnlinePlayer,
+  transferOnlineHost,
   leaveOnlineRoom,
   leaveProcessorId,
   leaveRoomOnUnload,
@@ -197,6 +198,7 @@ export function GameApp() {
   const [hostPickingTheme, setHostPickingTheme] = useState(false);
   /** リレー流派 */
   const [shirazuStyle, setShirazuStyle] = useState<ShirazuStyle>("strict");
+  const [kumoGakure, setKumoGakure] = useState(false);
   /** 次の一宴だけ、たまき等の完成で破門する */
   const [noMoreTmc, setNoMoreTmc] = useState(false);
   /** 増やすたびに No More TMC の演出を最初から再生する */
@@ -251,6 +253,7 @@ export function GameApp() {
   });
   /** 破門されたときに中央へ大きく出す */
   const [banished, setBanished] = useState(false);
+  const [banishWord, setBanishWord] = useState("破門");
 
   useEffect(() => {
     setMyId(getOrCreatePlayerId());
@@ -358,6 +361,7 @@ export function GameApp() {
       setShirazuStyle(
         snapshot.room.shirazu_style === "free" ? "free" : "strict",
       );
+      setKumoGakure(snapshot.room.kumo_gakure === true);
       setNoMoreTmc(snapshot.room.no_more_tmc === true);
       const nextPoems = snapshot.room.poems ?? [];
       setPoems(nextPoems);
@@ -546,10 +550,15 @@ export function GameApp() {
             setErrorMessage((error as Error).message);
           });
         },
-        (kickedId, name) => {
-          if (kickedId === myIdRef.current) return;
+        (kickedId, name, superBan) => {
+          if (kickedId === myIdRef.current) {
+            if (superBan) setBanishWord("超破門");
+            return;
+          }
           kickedIdsRef.current.add(kickedId);
-          setErrorMessage(`${name}さんは破門されました`);
+          setErrorMessage(
+            `${name}さんは${superBan ? "超破門" : "破門"}されました`,
+          );
         },
         (stamp) => {
           if (!stampOpenRef.current || stamp.playerId === myIdRef.current) {
@@ -784,6 +793,7 @@ export function GameApp() {
     verseMode?: VerseMode,
     themeOverride?: string,
     styleOverride?: ShirazuStyle,
+    kumoOverride?: boolean,
   ) => {
     const activeMode = verseMode ?? mode;
     const maxPlayers = clampPlayerCount(activeMode, count ?? playerCount);
@@ -798,9 +808,11 @@ export function GameApp() {
           ? "free"
           : "strict"
         : "strict";
+    const activeKumo = activeMode !== "shirazu" && kumoOverride === true;
     if (verseMode) setMode(activeMode);
     if (themeOverride !== undefined) setTheme(activeTheme);
     if (activeMode === "shirazu") setShirazuStyle(activeStyle);
+    setKumoGakure(activeKumo);
     setPlayerCount(maxPlayers);
     // 部屋作成直前はお題画面。戻ると人数／流派選択へ戻れる
     lobbyBackStepRef.current = "theme";
@@ -840,6 +852,7 @@ export function GameApp() {
             maxPlayers,
             theme: activeTheme,
             shirazuStyle: activeStyle,
+            kumoGakure: activeKumo,
           });
           flushSync(() => {
             setNickname(displayName);
@@ -923,6 +936,7 @@ export function GameApp() {
           }
           flushSync(() => {
             setBanished(false);
+            setBanishWord("破門");
             setHomeStep(nextHomeStep);
             setPhase("home");
             setRoomId(null);
@@ -970,7 +984,7 @@ export function GameApp() {
     };
   });
 
-  const handleKick = async (targetId: string) => {
+  const handleKick = async (targetId: string, ban = false) => {
     if (!roomId || !myId) return;
     setBusy(true);
     setErrorMessage("");
@@ -985,14 +999,37 @@ export function GameApp() {
         roomId,
         hostId: myId,
         targetId,
+        ban,
       });
       applySnapshot(snapshot);
       if (target) {
-        setErrorMessage(`${target.name}さんは破門されました`);
+        setErrorMessage(
+          `${target.name}さんは${ban ? "超破門" : "破門"}されました`,
+        );
       }
     } catch (error) {
       kickedIdsRef.current.delete(targetId);
       setErrorMessage((error as Error).message || "破門できませんでした。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleTransferHost = async (targetId: string) => {
+    if (!roomId || !myId) return;
+    setBusy(true);
+    setErrorMessage("");
+    const target = players.find((p) => p.id === targetId);
+    try {
+      const snapshot = await transferOnlineHost({
+        roomId,
+        hostId: myId,
+        nextHostId: targetId,
+      });
+      applySnapshot(snapshot);
+      if (target) setErrorMessage(`亭主を${target.name}さんに譲渡しました`);
+    } catch (error) {
+      setErrorMessage((error as Error).message || "譲渡できませんでした。");
     } finally {
       setBusy(false);
     }
@@ -1258,7 +1295,7 @@ export function GameApp() {
 
   const handleRematch = async (
     nextTheme: string,
-    next?: { mode: VerseMode; shirazuStyle?: ShirazuStyle },
+    next?: { mode: VerseMode; shirazuStyle?: ShirazuStyle; kumoGakure?: boolean },
   ) => {
     const themeText = nextTheme.trim().slice(0, THEME_MAX_LENGTH);
     const verseMode = next?.mode ?? poems[0]?.mode ?? mode;
@@ -1293,6 +1330,7 @@ export function GameApp() {
         theme: themeText,
         mode: next?.mode,
         shirazuStyle: next?.shirazuStyle,
+        kumoGakure: next?.kumoGakure,
       });
       applySnapshot(snapshot);
     } catch (error) {
@@ -1449,8 +1487,8 @@ export function GameApp() {
             playerCount={playerCount}
             onModeChange={handleModeChange}
             onPlayerCountChange={setPlayerCount}
-            onCreateRoom={(count, verseMode, nextTheme, nextStyle) =>
-              handleCreateRoom(count, verseMode, nextTheme, nextStyle)
+            onCreateRoom={(count, verseMode, nextTheme, nextStyle, kumo) =>
+              handleCreateRoom(count, verseMode, nextTheme, nextStyle, kumo)
             }
             onJoinRoom={(id) => {
               void handleJoinRoom(id, false);
@@ -1469,6 +1507,7 @@ export function GameApp() {
               mode={mode}
               theme={theme}
               shirazuStyle={shirazuStyle}
+              kumoGakure={kumoGakure}
               players={players}
               spectators={spectators}
               myId={myId}
@@ -1481,6 +1520,12 @@ export function GameApp() {
               }}
               onKick={(id) => {
                 void handleKick(id);
+              }}
+              onSuperKick={(id) => {
+                void handleKick(id, true);
+              }}
+              onTransferHost={(id) => {
+                void handleTransferHost(id);
               }}
               onBack={() => {
                 void handleLobbyBack();
@@ -1502,6 +1547,8 @@ export function GameApp() {
               poems={poems}
               theme={theme}
               shirazuStyle={shirazuStyle}
+              kumoGakure={kumoGakure}
+              myId={myId}
               note={
                 isLineTurn(turn) && writer
                   ? `${writer.name}が書いています`
@@ -1555,6 +1602,7 @@ export function GameApp() {
                 writer={writer}
                 myId={myId}
                 theme={theme}
+                kumoGakure={kumoGakure}
                 waitingForPartner={writer.id !== myId}
                 isSolo={players.length === 1 && !roomId}
                 busy={busy}
@@ -1578,9 +1626,16 @@ export function GameApp() {
             players={players}
             spectators={spectators}
             myId={myId}
+            turn={turn}
             busy={busy}
             onKick={(id) => {
               void handleKick(id);
+            }}
+            onSuperKick={(id) => {
+              void handleKick(id, true);
+            }}
+            onTransferHost={(id) => {
+              void handleTransferHost(id);
             }}
             onCloseRoom={() => {
               void handleLeave();
@@ -1594,6 +1649,7 @@ export function GameApp() {
               poems={poems}
               theme={theme}
               shirazuStyle={shirazuStyle}
+              kumoGakure={kumoGakure}
               roomId={roomId}
               revealReady={revealReady}
               revealPoemIndex={
@@ -1667,7 +1723,7 @@ export function GameApp() {
                 "0 0 12px #fff, 0 0 24px #fff, 0 0 4px #fff, 0 0 2px #fff",
             }}
           >
-            破門
+            {banishWord}
           </p>
         </div>
       )}

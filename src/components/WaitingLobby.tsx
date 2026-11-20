@@ -9,10 +9,79 @@ function nameInitial(name: string): string {
   return [...name][0] ?? "？";
 }
 
+function RosterActions({
+  name,
+  playerId,
+  canTransfer,
+  busy,
+  onKick,
+  onSuperKick,
+  onTransferHost,
+}: {
+  name: string;
+  playerId: string;
+  canTransfer: boolean;
+  busy?: boolean;
+  onKick?: (playerId: string) => void;
+  onSuperKick?: (playerId: string) => void;
+  onTransferHost?: (playerId: string) => void;
+}) {
+  if (!onKick && !onSuperKick && !onTransferHost) return null;
+  return (
+    <div className="flex shrink-0 flex-wrap justify-end gap-1">
+      {onKick ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm("破門しますか？")) onKick(playerId);
+          }}
+          className="border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+        >
+          破門
+        </button>
+      ) : null}
+      {onSuperKick ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (
+              window.confirm(
+                "超破門しますか？ この宴が終わるまで再参加できません。",
+              )
+            ) {
+              onSuperKick(playerId);
+            }
+          }}
+          className="border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+        >
+          超破門
+        </button>
+      ) : null}
+      {canTransfer && onTransferHost ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm(`亭主を${name}さんに譲渡しますか？`)) {
+              onTransferHost(playerId);
+            }
+          }}
+          className="border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
+        >
+          譲渡
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 interface WaitingLobbyProps {
   mode: VerseMode;
   theme?: string;
   shirazuStyle?: ShirazuStyle;
+  kumoGakure?: boolean;
   players: Player[];
   spectators?: Player[];
   myId: string;
@@ -24,6 +93,10 @@ interface WaitingLobbyProps {
   onStart: () => void;
   /** 亭主が連衆・観戦を破門する */
   onKick?: (playerId: string) => void;
+  /** この宴が終わるまで再参加できない */
+  onSuperKick?: (playerId: string) => void;
+  /** 連衆へ亭主を渡す */
+  onTransferHost?: (playerId: string) => void;
   /** ひとつ前の画面へ（部屋は退出） */
   onBack: () => void;
   /** ホームのモード選択へ */
@@ -37,6 +110,7 @@ export function WaitingLobby({
   mode,
   theme = "",
   shirazuStyle = "strict",
+  kumoGakure = false,
   players,
   spectators = [],
   myId,
@@ -46,6 +120,8 @@ export function WaitingLobby({
   busy = false,
   onStart,
   onKick,
+  onSuperKick,
+  onTransferHost,
   onBack,
   onLeave,
   onNoMoreTmc,
@@ -73,7 +149,7 @@ export function WaitingLobby({
           <FitText text={hostName ? `${hostName}の和室` : "和室"} minFontPx={14} />
         </h2>
         <p className="text-sm tracking-wider text-black/55">
-          {roomModeLabel(mode, shirazuStyle)}・{toKanji(players.length)}／
+          {roomModeLabel(mode, shirazuStyle, kumoGakure)}・{toKanji(players.length)}／
           {toKanji(maxPlayers)}人
           {watching ? "・観戦" : ""}
         </p>
@@ -92,7 +168,7 @@ export function WaitingLobby({
           {players.map((p) => (
             <li
               key={p.id}
-              className="flex items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
+              className="flex flex-wrap items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-black bg-black text-sm text-white md:h-11 md:w-11 md:text-base">
                 {nameInitial(p.name)}
@@ -110,26 +186,23 @@ export function WaitingLobby({
                   <span className="shrink-0 text-xs text-black/45">（あなた）</span>
                 ) : null}
               </div>
-              {isHost && onKick && p.id !== myId ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    if (window.confirm("破門しますか？")) {
-                      onKick(p.id);
-                    }
-                  }}
-                  className="shrink-0 border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
-                >
-                  破門
-                </button>
+              {isHost && p.id !== myId ? (
+                <RosterActions
+                  name={p.name}
+                  playerId={p.id}
+                  canTransfer
+                  busy={busy}
+                  onKick={onKick}
+                  onSuperKick={onSuperKick}
+                  onTransferHost={onTransferHost}
+                />
               ) : null}
             </li>
           ))}
           {spectators.map((p) => (
             <li
               key={p.id}
-              className="flex items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
+              className="flex flex-wrap items-center gap-3 border-2 border-black px-3 py-2.5 md:px-4 md:py-3"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-black bg-white text-sm text-black md:h-11 md:w-11 md:text-base">
                 {nameInitial(p.name)}
@@ -145,19 +218,16 @@ export function WaitingLobby({
                   <span className="shrink-0 text-xs text-black/45">（あなた）</span>
                 ) : null}
               </div>
-              {isHost && onKick && p.id !== myId ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    if (window.confirm("破門しますか？")) {
-                      onKick(p.id);
-                    }
-                  }}
-                  className="shrink-0 border border-black px-2 py-1 text-xs tracking-widest hover:bg-black hover:text-white disabled:opacity-40"
-                >
-                  破門
-                </button>
+              {isHost && p.id !== myId ? (
+                <RosterActions
+                  name={p.name}
+                  playerId={p.id}
+                  canTransfer={false}
+                  busy={busy}
+                  onKick={onKick}
+                  onSuperKick={onSuperKick}
+                  onTransferHost={onTransferHost}
+                />
               ) : null}
             </li>
           ))}

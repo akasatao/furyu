@@ -99,7 +99,7 @@ export function OpenRoomList({
                 <div className="flex flex-col gap-1">
                   <span className="flex w-full items-baseline justify-between gap-2">
                     <span className="min-w-0 truncate text-lg tracking-[0.2em] md:text-xl">
-                      {roomModeLabel(room.mode, room.shirazuStyle)}
+                      {roomModeLabel(room.mode, room.shirazuStyle, room.kumoGakure)}
                     </span>
                     <span className="shrink-0 text-sm tracking-wider text-black/55">
                       {status ? `${status}　` : ""}

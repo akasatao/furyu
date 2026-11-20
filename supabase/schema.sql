@@ -16,6 +16,8 @@ create table if not exists public.rooms (
   -- リレー: strict=しっかり / free=自由律。俳句・短歌は未使用（strict）
   shirazu_style text not null default 'strict'
     check (shirazu_style in ('strict', 'free')),
+  -- 俳句・短歌: 結果発表まで自分の句以外を隠す
+  kumo_gakure boolean not null default false,
   -- 次の一宴だけ、たまき等を完成させた人を破門する
   no_more_tmc boolean not null default false,
   created_at timestamptz not null default now(),
@@ -33,9 +35,16 @@ alter table public.rooms
 alter table public.rooms
   add column if not exists shirazu_style text not null default 'strict';
 
+alter table public.rooms
+  add column if not exists kumo_gakure boolean not null default false;
+
 -- 次の一宴だけ、たまき等を完成させた人を破門する
 alter table public.rooms
   add column if not exists no_more_tmc boolean not null default false;
+
+-- 超破門。この宴が終わり待機へ戻るまで、再参加できない
+alter table public.rooms
+  add column if not exists banned_player_ids text[] not null default '{}';
 
 notify pgrst, 'reload schema';
 

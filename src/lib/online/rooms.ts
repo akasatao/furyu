@@ -50,6 +50,13 @@ function normalizeShirazuStyle(value: unknown): ShirazuStyle {
   return value === "free" ? "free" : "strict";
 }
 
+function bannedPlayerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (id): id is string => typeof id === "string" && id.length > 0,
+  );
+}
+
 function asRoom(row: RoomRow): RoomRow {
   return {
     ...row,
@@ -57,7 +64,9 @@ function asRoom(row: RoomRow): RoomRow {
     turn: row.turn ?? null,
     theme: typeof row.theme === "string" ? row.theme : "",
     shirazu_style: normalizeShirazuStyle(row.shirazu_style),
+    kumo_gakure: row.kumo_gakure === true && row.mode !== "shirazu",
     no_more_tmc: row.no_more_tmc === true,
+    banned_player_ids: bannedPlayerIds(row.banned_player_ids),
   };
 }
 
@@ -103,6 +112,8 @@ export async function createOnlineRoom(options: {
   maxPlayers: number;
   theme?: string;
   shirazuStyle?: ShirazuStyle;
+  /** 俳句・短歌の雲隠れ。リレーでは無視 */
+  kumoGakure?: boolean;
 }): Promise<OnlineRoomSnapshot> {
   const supabase = getSupabase();
   let code = randomRoomCode();
@@ -112,38 +123,25 @@ export async function createOnlineRoom(options: {
     options.mode === "shirazu"
       ? normalizeShirazuStyle(options.shirazuStyle)
       : "strict";
+  const kumoGakure = options.mode !== "shirazu" && options.kumoGakure === true;
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const payload = {
+    const payload: Record<string, unknown> = {
       code,
       mode: options.mode,
       max_players: options.maxPlayers,
-      phase: "lobby" as const,
+      phase: "lobby",
       host_id: options.playerId,
       step_index: 0,
       poems: [] as unknown[],
       turn: null,
       theme,
       shirazu_style: shirazuStyle,
+      kumo_gakure: kumoGakure,
     };
-    let { data, error } = await supabase
-      .from("rooms")
-      .insert(payload)
-      .select("*")
-      .single();
-
-    // 未マイグレーション DB 向け：カラム無しなら style 抜きで再試行
-    if (error && isMissingColumn(error, "shirazu_style")) {
-      const { shirazu_style: _omit, ...legacy } = payload;
-      ({ data, error } = await supabase
-        .from("rooms")
-        .insert(legacy)
-        .select("*")
-        .single());
-    }
-
-    if (!error && data) {
-      room = asRoom(data as RoomRow);
+    const inserted = await insertRoomRow(payload);
+    if (!inserted.error && inserted.data) {
+      room = asRoom(inserted.data);
       break;
     }
     // unique violation → 別コードで再試行
@@ -184,6 +182,54 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return "";
+}
+
+/** 未マイグレーションの任意カラムを外しながら insert する */
+async function insertRoomRow(
+  row: Record<string, unknown>,
+): Promise<{ data: RoomRow | null; error: unknown }> {
+  const supabase = getSupabase();
+  const body = { ...row };
+  const optional = ["kumo_gakure", "shirazu_style"];
+  for (;;) {
+    const result = await supabase.from("rooms").insert(body).select("*").single();
+    if (!result.error && result.data) {
+      return { data: result.data as RoomRow, error: null };
+    }
+    const missing = optional.find(
+      (column) =>
+        Object.prototype.hasOwnProperty.call(body, column) &&
+        isMissingColumn(result.error, column),
+    );
+    if (!missing) return { data: null, error: result.error };
+    delete body[missing];
+  }
+}
+
+/** 未マイグレーションの任意カラムを外しながら update する */
+async function updateRoomRow(
+  roomId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const supabase = getSupabase();
+  const body = { ...patch };
+  const optional = [
+    "kumo_gakure",
+    "banned_player_ids",
+    "no_more_tmc",
+    "shirazu_style",
+  ];
+  for (;;) {
+    const { error } = await supabase.from("rooms").update(body).eq("id", roomId);
+    if (!error) return;
+    const missing = optional.find(
+      (column) =>
+        Object.prototype.hasOwnProperty.call(body, column) &&
+        isMissingColumn(error, column),
+    );
+    if (!missing) throw error;
+    delete body[missing];
+  }
 }
 
 function isMissingColumn(error: unknown, column: string): boolean {
@@ -227,6 +273,7 @@ type OpenRoomRow = Pick<
   | "created_at"
 > & {
   shirazu_style?: ShirazuStyle;
+  kumo_gakure?: boolean;
   room_players: Pick<RoomPlayerRow, "name" | "is_host" | "role">[] | null;
 };
 
@@ -244,6 +291,7 @@ function summarizeOpenRooms(rows: OpenRoomRow[]): OpenRoomSummary[] {
         phase,
         theme: typeof row.theme === "string" ? row.theme : "",
         shirazuStyle: normalizeShirazuStyle(row.shirazu_style),
+        kumoGakure: row.kumo_gakure === true && row.mode !== "shirazu",
         hostName: host?.name ?? "",
         playerCount,
         maxPlayers: row.max_players,
@@ -267,14 +315,23 @@ async function selectOpenRooms(
   const players = withRole
     ? "room_players(name, is_host, role)"
     : "room_players(name, is_host)";
+  const withKumo = `id, mode, phase, max_players, theme, shirazu_style, kumo_gakure, created_at, ${players}`;
   const withStyle = `id, mode, phase, max_players, theme, shirazu_style, created_at, ${players}`;
   const withoutStyle = `id, mode, phase, max_players, theme, created_at, ${players}`;
   let { data, error } = await supabase
     .from("rooms")
-    .select(withStyle)
+    .select(withKumo)
     .in("phase", ["lobby", "writing", "reveal"])
     .gte("last_seen", freshAfter)
     .order("last_seen", { ascending: false });
+  if (error && isMissingColumn(error, "kumo_gakure")) {
+    ({ data, error } = await supabase
+      .from("rooms")
+      .select(withStyle)
+      .in("phase", ["lobby", "writing", "reveal"])
+      .gte("last_seen", freshAfter)
+      .order("last_seen", { ascending: false }));
+  }
   if (error && isMissingColumn(error, "shirazu_style")) {
     ({ data, error } = await supabase
       .from("rooms")
@@ -295,14 +352,24 @@ async function selectOpenRooms(
 async function listOpenRoomsByAge(): Promise<OpenRoomSummary[]> {
   const supabase = getSupabase();
   const since = new Date(Date.now() - OPEN_ROOM_MAX_AGE_MS).toISOString();
-  const listed = await supabase
+  let listed = await supabase
     .from("rooms")
     .select(
-      "id, mode, phase, max_players, theme, shirazu_style, created_at, room_players(name, is_host, role)",
+      "id, mode, phase, max_players, theme, shirazu_style, kumo_gakure, created_at, room_players(name, is_host, role)",
     )
     .in("phase", ["lobby", "writing", "reveal"])
     .gte("created_at", since)
     .order("created_at", { ascending: false });
+  if (listed.error && isMissingColumn(listed.error, "kumo_gakure")) {
+    listed = await supabase
+      .from("rooms")
+      .select(
+        "id, mode, phase, max_players, theme, shirazu_style, created_at, room_players(name, is_host, role)",
+      )
+      .in("phase", ["lobby", "writing", "reveal"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: false }) as typeof listed;
+  }
 
   if (!listed.error) {
     return summarizeAndDropEmpty(
@@ -459,6 +526,9 @@ export async function joinOnlineRoom(options: {
   if (!roomData) throw new Error("その和室はもう閉じられています。");
 
   const room = asRoom(roomData as RoomRow);
+  if ((room.banned_player_ids ?? []).includes(options.playerId)) {
+    throw new Error("この宴では再参加できません。");
+  }
   const current = await loadRoomSnapshot(room.id);
   const alreadyIn =
     current.players.some((p) => p.id === options.playerId) ||
@@ -663,6 +733,8 @@ export async function kickOnlinePlayer(options: {
   roomId: string;
   hostId: string;
   targetId: string;
+  /** この宴が終わるまで再参加できない */
+  ban?: boolean;
 }): Promise<OnlineRoomSnapshot> {
   const snapshot = await loadRoomSnapshot(options.roomId);
   if (snapshot.room.host_id !== options.hostId) {
@@ -677,10 +749,15 @@ export async function kickOnlinePlayer(options: {
     snapshot.spectators.find((p) => p.id === options.targetId);
   if (!target) return snapshot;
 
+  if (options.ban) {
+    await rememberBan(options.roomId, target.id, snapshot.room.banned_player_ids);
+  }
+
   // 行を消す前に知らせる（自主退出の「筆を折りました」と区別する）
   await postRoomBroadcast(options.roomId, KICK_EVENT, {
     playerId: target.id,
     name: target.name,
+    super: options.ban === true,
   });
 
   const isSpectator = snapshot.spectators.some(
@@ -700,6 +777,46 @@ export async function kickOnlinePlayer(options: {
     throw new Error("披露中は破門できません。");
   }
 
+  return loadRoomSnapshot(options.roomId);
+}
+
+/** 超破門の名簿。列が無い和室では、人を消す前に知らせて止める */
+async function rememberBan(
+  roomId: string,
+  playerId: string,
+  current: string[] | undefined,
+) {
+  const ids = current ?? [];
+  const next = ids.includes(playerId) ? ids : [...ids, playerId];
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("rooms")
+    .update({ banned_player_ids: next })
+    .eq("id", roomId);
+  if (error && isMissingColumn(error, "banned_player_ids")) {
+    throw new Error(
+      "超破門の準備がまだです。Supabase で banned_player_ids を追加してください。",
+    );
+  }
+  if (error) throw error;
+}
+
+/** 亭主をほかの連衆へ渡す。観戦には渡せない */
+export async function transferOnlineHost(options: {
+  roomId: string;
+  hostId: string;
+  nextHostId: string;
+}): Promise<OnlineRoomSnapshot> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  if (snapshot.room.host_id !== options.hostId) {
+    throw new Error("亭主だけが譲渡できます。");
+  }
+  if (options.nextHostId === options.hostId) {
+    throw new Error("自分には譲渡できません。");
+  }
+  const next = snapshot.players.find((p) => p.id === options.nextHostId);
+  if (!next) throw new Error("連衆に譲渡してください。");
+  await promoteHost(options.roomId, next.id);
   return loadRoomSnapshot(options.roomId);
 }
 
@@ -1058,6 +1175,8 @@ export async function resetRoomToLobby(options: {
   /** 指定したときだけモードを変える。無ければ今のモードのまま */
   mode?: VerseMode;
   shirazuStyle?: ShirazuStyle;
+  /** モードを変えるときだけ見る。true のとき雲隠れ */
+  kumoGakure?: boolean;
 }): Promise<OnlineRoomSnapshot> {
   const snapshot = await loadRoomSnapshot(options.roomId);
   if (snapshot.room.host_id !== options.hostId) {
@@ -1070,6 +1189,7 @@ export async function resetRoomToLobby(options: {
 
   let mode = snapshot.room.mode;
   let shirazuStyle = normalizeShirazuStyle(snapshot.room.shirazu_style);
+  let kumoGakure = snapshot.room.kumo_gakure === true;
   if (options.mode) {
     const { min, max } = PLAYER_COUNT_RANGE[options.mode];
     const count = snapshot.players.length;
@@ -1081,7 +1201,9 @@ export async function resetRoomToLobby(options: {
       options.mode === "shirazu"
         ? normalizeShirazuStyle(options.shirazuStyle)
         : "strict";
+    kumoGakure = options.mode !== "shirazu" && options.kumoGakure === true;
   }
+  if (mode === "shirazu") kumoGakure = false;
 
   // 開宴で実人数まで縮めた定員を、そのモードの上限へ戻す
   const maxPlayers = PLAYER_COUNT_RANGE[mode].max;
@@ -1092,38 +1214,19 @@ export async function resetRoomToLobby(options: {
     .update({ part_indexes: [] })
     .eq("room_id", options.roomId);
 
-  const { error } = await supabase
-    .from("rooms")
-    .update({
-      phase: "lobby",
-      step_index: 0,
-      poems: [],
-      turn: null,
-      theme,
-      mode,
-      shirazu_style: shirazuStyle,
-      max_players: maxPlayers,
-      no_more_tmc: false,
-    })
-    .eq("id", options.roomId);
-  if (error && isMissingColumn(error, "no_more_tmc")) {
-    const { error: legacyError } = await supabase
-      .from("rooms")
-      .update({
-        phase: "lobby",
-        step_index: 0,
-        poems: [],
-        turn: null,
-        theme,
-        mode,
-        shirazu_style: shirazuStyle,
-        max_players: maxPlayers,
-      })
-      .eq("id", options.roomId);
-    if (legacyError) throw legacyError;
-  } else if (error) {
-    throw error;
-  }
+  await updateRoomRow(options.roomId, {
+    phase: "lobby",
+    step_index: 0,
+    poems: [],
+    turn: null,
+    theme,
+    mode,
+    shirazu_style: shirazuStyle,
+    kumo_gakure: kumoGakure,
+    max_players: maxPlayers,
+    no_more_tmc: false,
+    banned_player_ids: [],
+  });
 
   return loadRoomSnapshot(options.roomId);
 }
@@ -1209,7 +1312,7 @@ export function subscribeOnlineRoom(
   onChange: (snapshot: OnlineRoomSnapshot) => void,
   onError?: (error: Error) => void,
   onLeaveSignal?: (playerId: string) => void,
-  onKickSignal?: (playerId: string, name: string) => void,
+  onKickSignal?: (playerId: string, name: string, superBan?: boolean) => void,
   onStampSignal?: (payload: StampPayload) => void,
   onNoMoreTmc?: (hostId: string) => void,
 ): OnlineRoomSubscription {
@@ -1234,7 +1337,7 @@ export function subscribeOnlineRoom(
     })
     .on("broadcast", { event: KICK_EVENT }, ({ payload }) => {
       const body = payload as
-        | { playerId?: unknown; name?: unknown }
+        | { playerId?: unknown; name?: unknown; super?: unknown }
         | undefined;
       const playerId = body?.playerId;
       const name = body?.name;
@@ -1244,7 +1347,7 @@ export function subscribeOnlineRoom(
         typeof name === "string" &&
         name.trim()
       ) {
-        onKickSignal?.(playerId, name.trim());
+        onKickSignal?.(playerId, name.trim(), body?.super === true);
       }
     })
     .on("broadcast", { event: SYNC_EVENT }, () => {
@@ -1423,6 +1526,7 @@ async function promoteHost(
   nextHostId: string,
 ): Promise<void> {
   const supabase = getSupabase();
+  // 先に次の亭主を立てる。先に下ろすと「亭主がいない」で和室が閉じる
   const { error: playerError } = await supabase
     .from("room_players")
     .update({ is_host: true })
@@ -1434,6 +1538,12 @@ async function promoteHost(
     .update({ host_id: nextHostId })
     .eq("id", roomId);
   if (roomError) throw roomError;
+  const { error: demoteError } = await supabase
+    .from("room_players")
+    .update({ is_host: false })
+    .eq("room_id", roomId)
+    .neq("player_id", nextHostId);
+  if (demoteError) throw demoteError;
 }
 
 /**

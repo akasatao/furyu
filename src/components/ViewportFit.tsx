@@ -9,7 +9,7 @@ import {
 
 /**
  * 子の自然高さが親に収まるよう、全体を均一に縮小する（上基準）。
- * 縮小しすぎる場合は等倍のままスクロールする。
+ * minScale が 1 以上のときだけ縮小せず、収まりきらなければスクロールする。
  */
 export function ViewportFit({
   children,
@@ -59,12 +59,12 @@ export function ViewportFit({
       if (next >= 1) {
         setScale(1);
         setScrollable(false);
-      } else if (next >= minScale) {
-        setScale(next);
-        setScrollable(false);
-      } else {
+      } else if (minScale >= 1) {
         setScale(1);
         setScrollable(true);
+      } else {
+        setScale(next);
+        setScrollable(false);
       }
     };
 

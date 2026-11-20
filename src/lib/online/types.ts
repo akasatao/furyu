@@ -24,8 +24,12 @@ export interface RoomRow {
   theme: string;
   /** リレー流派。俳句・短歌は strict */
   shirazu_style: ShirazuStyle;
+  /** 俳句・短歌: 結果まで自分の句以外を隠す。未移行は false */
+  kumo_gakure?: boolean;
   /** 次の一宴だけ、たまき等の完成で破門する */
   no_more_tmc: boolean;
+  /** 超破門。この宴が終わるまで再参加できない */
+  banned_player_ids?: string[];
   created_at: string;
 }
 
@@ -50,6 +54,8 @@ export interface OpenRoomSummary {
   phase: "lobby" | "writing" | "reveal";
   theme: string;
   shirazuStyle: ShirazuStyle;
+  /** 俳句・短歌の雲隠れ */
+  kumoGakure: boolean;
   hostName: string;
   /** 連衆だけ。観戦は含まない */
   playerCount: number;

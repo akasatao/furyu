@@ -8,6 +8,7 @@ import {
   MODE_LABEL,
   modeAllowsSolo,
   PLAYER_COUNT_RANGE,
+  roomModeLabel,
   SHIRAZU_STYLE_LABEL,
   THEME_MAX_LENGTH,
   THEME_PROMPTS,
@@ -90,6 +91,7 @@ interface HomeScreenProps {
     verseMode?: VerseMode,
     theme?: string,
     shirazuStyle?: ShirazuStyle,
+    kumoGakure?: boolean,
   ) => void | Promise<void>;
   onJoinRoom: (roomId: string) => void;
   onSpectateRoom: (roomId: string) => void;
@@ -152,8 +154,10 @@ export function HomeScreen({
   const [transitioning, setTransitioning] = useState(false);
   const [themeDraft, setThemeDraft] = useState(theme);
   const [pressedChoice, setPressedChoice] = useState<
-    "solo" | "multi" | "join" | VerseMode | ShirazuStyle | null
+    "solo" | "multi" | "kumo" | "join" | VerseMode | ShirazuStyle | null
   >(null);
+  /** 俳句・短歌で、お題の前に選んだ雲隠れ */
+  const [kumoChoice, setKumoChoice] = useState(false);
   /** キーボード表示中はコンパクト＋スクロールに切替 */
   const [inputFocused, setInputFocused] = useState(false);
   const poemCaptureRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
@@ -311,6 +315,7 @@ export function HomeScreen({
   const handleSelectMode = (next: VerseMode) => {
     if (isLocked) return;
     onModeChange(next);
+    setKumoChoice(false);
     setThemeDraft("");
     onThemeChange?.("");
     // 俳句・短歌は人数、リレーは流派を先に選び、お題は最後
@@ -361,7 +366,7 @@ export function HomeScreen({
       void onCreateRoom(max, mode, next, shirazuStyle);
       return;
     }
-    void onCreateRoom(playerCount, mode, next);
+    void onCreateRoom(playerCount, mode, next, undefined, kumoChoice);
   };
 
   const handleSelectShirazuStyle = (style: ShirazuStyle) => {
@@ -373,7 +378,7 @@ export function HomeScreen({
   };
 
   const pressChoice = (
-    choice: "solo" | "multi" | "join" | VerseMode | ShirazuStyle,
+    choice: "solo" | "multi" | "kumo" | "join" | VerseMode | ShirazuStyle,
   ) => {
     if (isLocked) return;
     setPressedChoice(choice);
@@ -385,12 +390,22 @@ export function HomeScreen({
 
   const handleSolo = () => {
     if (isLocked) return;
+    setKumoChoice(false);
     onPlayerCountChange(1);
     void goToStep("theme");
   };
 
   const handleMulti = () => {
     if (isLocked) return;
+    setKumoChoice(false);
+    const max = PLAYER_COUNT_RANGE[mode].max;
+    onPlayerCountChange(max);
+    void goToStep("theme");
+  };
+
+  const handleKumo = () => {
+    if (isLocked) return;
+    setKumoChoice(true);
     const max = PLAYER_COUNT_RANGE[mode].max;
     onPlayerCountChange(max);
     void goToStep("theme");
@@ -760,7 +775,7 @@ export function HomeScreen({
               <p className="text-xl tracking-[0.35em] text-black/55 md:text-3xl">
                 {mode === "shirazu"
                   ? SHIRAZU_STYLE_LABEL[shirazuStyle]
-                  : MODE_LABEL[mode]}
+                  : roomModeLabel(mode, "strict", kumoChoice)}
               </p>
               <span className="w-12" aria-hidden />
             </div>
@@ -858,6 +873,21 @@ export function HomeScreen({
                   }`}
                 >
                   みんなで詠む
+                </button>
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={handleKumo}
+                  onPointerDown={() => pressChoice("kumo")}
+                  onPointerUp={releaseChoice}
+                  onPointerCancel={releaseChoice}
+                  onPointerLeave={releaseChoice}
+                  aria-pressed={pressedChoice === "kumo"}
+                  className={`brush-btn-outline w-full py-5 text-2xl tracking-[0.35em] md:py-7 md:text-4xl ${
+                    pressedChoice === "kumo" ? "is-pressed" : ""
+                  }`}
+                >
+                  雲隠れ
                 </button>
               </div>
             </div>

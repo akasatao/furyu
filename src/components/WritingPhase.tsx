@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FitText } from "@/components/FitText";
-import { MODE_LABEL } from "@/lib/constants";
+import { hiddenPartMark, roomModeLabel } from "@/lib/constants";
 import {
   clampShirazuDraft,
   isValidShirazuMora,
@@ -27,6 +27,8 @@ interface WritingPhaseProps {
   writer: Player;
   myId: string;
   theme?: string;
+  /** 俳句・短歌の雲隠れ。他人の句は？で出す */
+  kumoGakure?: boolean;
   waitingForPartner: boolean;
   isSolo?: boolean;
   busy?: boolean;
@@ -45,6 +47,7 @@ export function WritingPhase({
   writer,
   myId,
   theme = "",
+  kumoGakure = false,
   waitingForPartner,
   isSolo = false,
   busy = false,
@@ -116,12 +119,12 @@ export function WritingPhase({
         <header className="shrink-0 space-y-1.5 text-center">
           {!onBack && (
             <p className="text-xs tracking-[0.4em] text-black/45">
-              ひとりで詠む　{MODE_LABEL[mode]}
+              ひとりで詠む　{roomModeLabel(mode, "strict", kumoGakure)}
             </p>
           )}
           {onBack && (
             <p className="text-xs tracking-[0.35em] text-black/45">
-              {MODE_LABEL[mode]}
+              {roomModeLabel(mode, "strict", kumoGakure)}
             </p>
           )}
           <h2 className="text-2xl tracking-[0.2em] md:text-[clamp(1.5rem,5dvh,3rem)]">
@@ -152,13 +155,15 @@ export function WritingPhase({
                     isShirazu &&
                     shirazuLoc != null &&
                     i === shirazuLoc.lineIndex;
+                  const hidden = kumoGakure && line.authorId !== myId;
+                  const shown = hidden ? hiddenPartMark(mode, i) : line.text;
                   return (
-                    <li key={`${line.authorId}-${i}-${line.text}`}>
+                    <li key={`${line.authorId}-${i}-${shown}`}>
                       <p className="text-[10px] tracking-widest text-black/35">
                         {displayLabel}
                       </p>
                       <p className="text-xl tracking-widest md:text-[clamp(1.25rem,3.5dvh,1.875rem)]">
-                        {line.text}
+                        {shown}
                         {isCurrent ? "…" : ""}
                       </p>
                     </li>
@@ -226,7 +231,8 @@ export function WritingPhase({
     <div className="mx-auto flex w-full max-w-lg flex-col gap-3 md:max-w-2xl md:gap-6">
       <header className="shrink-0 space-y-0.5 text-center md:space-y-1">
         <p className="text-[10px] tracking-[0.35em] text-black/55 md:text-xs">
-          {MODE_LABEL[mode]}　{toKanji(stepIndex + 1)}／{toKanji(total)}
+          {roomModeLabel(mode, "strict", kumoGakure)}　{toKanji(stepIndex + 1)}／
+          {toKanji(total)}
         </p>
         <h2 className="text-xl tracking-widest md:text-4xl">
           {isShirazu ? "一音を詠む" : label}
@@ -247,7 +253,7 @@ export function WritingPhase({
       </header>
 
       {promptLines.length > 0 && (
-        <section className="brush-box max-h-[40%] shrink-0 overflow-y-auto px-4 py-2.5 md:px-5 md:py-[clamp(0.5rem,1.5dvh,1rem)]">
+        <section className="brush-box shrink-0 px-4 py-2.5 md:px-5 md:py-[clamp(0.5rem,1.5dvh,1rem)]">
           <p className="mb-1.5 text-xs tracking-widest text-black/50">
             {isShirazu ? "ここまでの音" : "ここまでの句"}
           </p>
@@ -260,16 +266,18 @@ export function WritingPhase({
                 isShirazu &&
                 shirazuLoc != null &&
                 i === shirazuLoc.lineIndex;
+              const hidden = kumoGakure && line.authorId !== myId;
+              const shown = hidden ? hiddenPartMark(mode, i) : line.text;
               return (
                 <li
-                  key={`${line.authorId}-${i}-${line.text}`}
+                  key={`${line.authorId}-${i}-${shown}`}
                   className="flex items-baseline gap-2"
                 >
                   <span className="shrink-0 text-[10px] tracking-widest text-black/40">
                     {displayLabel}
                   </span>
                   <span>
-                    {line.text}
+                    {shown}
                     {isCurrent ? "…" : ""}
                   </span>
                   {!isShirazu && (

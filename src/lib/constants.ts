@@ -17,12 +17,16 @@ export const MODE_PATTERN: Record<VerseMode, string> = {
   shirazu: "一音／拗音などで短冊を回す・人数分の俳句",
 };
 
-/** 表示用：リレーなら流派名、それ以外はモード名 */
+/** 表示用：リレーなら流派名、雲隠れなら「俳句・雲隠れ」 */
 export function roomModeLabel(
   mode: VerseMode,
   shirazuStyle: ShirazuStyle = "strict",
+  kumoGakure = false,
 ): string {
   if (mode === "shirazu") return SHIRAZU_STYLE_LABEL[shirazuStyle];
+  if (kumoGakure && (mode === "haiku" || mode === "tanka")) {
+    return `${MODE_LABEL[mode]}・雲隠れ`;
+  }
   return MODE_LABEL[mode];
 }
 
@@ -69,6 +73,12 @@ export const PART_TARGETS: Record<VerseMode, number[]> = {
   tanka: [5, 7, 5, 7, 7],
   shirazu: [5, 7, 5],
 };
+
+/** 雲隠れで他人の句の代わりに出す。五は？5つ、七は？7つ */
+export function hiddenPartMark(mode: VerseMode, index: number): string {
+  const count = PART_TARGETS[mode]?.[index] ?? 5;
+  return "？".repeat(count);
+}
 
 export const EMPTY_FALLBACK = "（無言）";
 

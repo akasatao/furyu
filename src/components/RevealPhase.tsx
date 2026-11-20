@@ -53,13 +53,19 @@ interface RevealPhaseProps {
   poems: Poem[];
   theme?: string;
   shirazuStyle?: ShirazuStyle;
+  /** 今の俳句・短歌が雲隠れか */
+  kumoGakure?: boolean;
   /** 披露演出の既読に使う（再表示で最初から再生しない） */
   roomId?: string | null;
   /** 今の連衆人数。別モードが開けるかの判定に使う */
   playerCount?: number;
   onRematch: (
     theme: string,
-    next?: { mode: VerseMode; shirazuStyle?: ShirazuStyle },
+    next?: {
+      mode: VerseMode;
+      shirazuStyle?: ShirazuStyle;
+      kumoGakure?: boolean;
+    },
   ) => void;
   /** お題フォームを開いた／閉じた。連衆・観戦の表示用 */
   onPickingThemeChange?: (picking: boolean) => void;
@@ -87,6 +93,7 @@ export function RevealPhase({
   poems,
   theme = "",
   shirazuStyle = "strict",
+  kumoGakure = false,
   roomId = null,
   playerCount = 1,
   onRematch,
@@ -134,6 +141,8 @@ export function RevealPhase({
   /** 別モードで進むときだけ入る。同じモードの再宴では null */
   const [nextMode, setNextMode] = useState<VerseMode | null>(null);
   const [nextStyle, setNextStyle] = useState<ShirazuStyle>("strict");
+  /** 別モードで俳句・短歌を選んだときの雲隠れ */
+  const [nextKumo, setNextKumo] = useState(false);
   /** お題の「戻る」が流派一覧へ戻るか、モード一覧へ戻るか */
   const [themeBackStep, setThemeBackStep] = useState<"mode" | "style">("mode");
   const [themeDraft, setThemeDraft] = useState(theme);
@@ -265,6 +274,8 @@ export function RevealPhase({
         ? "strict"
         : "free"
       : null;
+  const canFlipKumo =
+    !isSolo && (currentMode === "haiku" || currentMode === "tanka");
   const alternateModes = VERSE_MODES.filter((candidate) => {
     if (!currentMode || candidate === currentMode) return false;
     const range = PLAYER_COUNT_RANGE[candidate];
@@ -314,10 +325,19 @@ export function RevealPhase({
   const selectAlternateMode = (mode: VerseMode) => {
     if (advancing) return;
     setNextMode(mode);
+    setNextKumo(false);
     if (mode === "shirazu") {
       setPickerStep("style");
       return;
     }
+    setThemeBackStep("mode");
+    openThemeForNext();
+  };
+
+  const selectKumoVariant = (enabled: boolean) => {
+    if (advancing || !currentMode || currentMode === "shirazu") return;
+    setNextMode(currentMode);
+    setNextKumo(enabled);
     setThemeBackStep("mode");
     openThemeForNext();
   };
@@ -373,6 +393,8 @@ export function RevealPhase({
         ? {
             mode: nextMode,
             shirazuStyle: nextMode === "shirazu" ? nextStyle : undefined,
+            kumoGakure:
+              nextMode === "haiku" || nextMode === "tanka" ? nextKumo : false,
           }
         : undefined,
     );
@@ -681,7 +703,7 @@ export function RevealPhase({
                 >
                   {isSolo ? "もう一度詠む" : "再び宴を開く"}
                 </button>
-                {alternateModes.length > 0 || otherShirazuStyle ? (
+                {alternateModes.length > 0 || otherShirazuStyle || canFlipKumo ? (
                   <button
                     type="button"
                     onClick={openModePicker}
@@ -769,6 +791,16 @@ export function RevealPhase({
                       className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
                     >
                       {SHIRAZU_STYLE_LABEL[otherShirazuStyle]}
+                    </button>
+                  ) : null}
+                  {canFlipKumo ? (
+                    <button
+                      type="button"
+                      disabled={advancing}
+                      onClick={() => selectKumoVariant(!kumoGakure)}
+                      className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                    >
+                      {kumoGakure ? "そのまま詠む" : "雲隠れ"}
                     </button>
                   ) : null}
                   <button
