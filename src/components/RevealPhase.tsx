@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { TanzakuCard } from "@/components/TanzakuCard";
 import {
   MODE_LABEL,
@@ -22,7 +23,7 @@ import type { Poem, ShirazuStyle, VerseMode } from "@/types/game";
 const VERSE_MODES: VerseMode[] = ["haiku", "tanka", "shirazu"];
 const SHIRAZU_STYLES: ShirazuStyle[] = ["strict", "free"];
 
-type PickerStep = "closed" | "mode" | "style" | "theme";
+type PickerStep = "closed" | "mode" | "kumo" | "style" | "theme";
 
 /** タイトル＋空短冊を出してから書き始めるまでの間 */
 const BEFORE_WRITE_MS = 600;
@@ -93,7 +94,6 @@ export function RevealPhase({
   poems,
   theme = "",
   shirazuStyle = "strict",
-  kumoGakure = false,
   roomId = null,
   playerCount = 1,
   onRematch,
@@ -141,10 +141,14 @@ export function RevealPhase({
   /** 別モードで進むときだけ入る。同じモードの再宴では null */
   const [nextMode, setNextMode] = useState<VerseMode | null>(null);
   const [nextStyle, setNextStyle] = useState<ShirazuStyle>("strict");
-  /** 別モードで俳句・短歌を選んだときの雲隠れ */
+  /** 俳句・短歌で、通常か雲隠れか */
   const [nextKumo, setNextKumo] = useState(false);
-  /** お題の「戻る」が流派一覧へ戻るか、モード一覧へ戻るか */
-  const [themeBackStep, setThemeBackStep] = useState<"mode" | "style">("mode");
+  /** 雲隠れの「戻る」がモード一覧へ戻るか、ピッカーを閉じるか */
+  const [kumoBackStep, setKumoBackStep] = useState<"closed" | "mode">("closed");
+  /** お題の「戻る」がどの選択へ戻るか */
+  const [themeBackStep, setThemeBackStep] = useState<"mode" | "kumo" | "style">(
+    "mode",
+  );
   const [themeDraft, setThemeDraft] = useState(theme);
   const themeInputRef = useRef<HTMLInputElement>(null);
   const restoredPicker = useRef(false);
@@ -274,7 +278,7 @@ export function RevealPhase({
         ? "strict"
         : "free"
       : null;
-  const canFlipKumo =
+  const canChooseKumo =
     !isSolo && (currentMode === "haiku" || currentMode === "tanka");
   const alternateModes = VERSE_MODES.filter((candidate) => {
     if (!currentMode || candidate === currentMode) return false;
@@ -289,8 +293,16 @@ export function RevealPhase({
   };
 
   const openThemePicker = () => {
-    setNextMode(null);
     setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
+    if (canChooseKumo && currentMode) {
+      setNextMode(currentMode);
+      setNextKumo(false);
+      setKumoBackStep("closed");
+      setPickerStep("kumo");
+      beginHostPick();
+      return;
+    }
+    setNextMode(null);
     setPickerStep("theme");
     beginHostPick();
   };
@@ -330,16 +342,29 @@ export function RevealPhase({
       setPickerStep("style");
       return;
     }
-    setThemeBackStep("mode");
+    if (isSolo) {
+      setThemeBackStep("mode");
+      openThemeForNext();
+      return;
+    }
+    setKumoBackStep("mode");
+    setPickerStep("kumo");
+  };
+
+  const selectKumoChoice = (enabled: boolean) => {
+    if (advancing) return;
+    setNextKumo(enabled);
+    setThemeBackStep("kumo");
     openThemeForNext();
   };
 
-  const selectKumoVariant = (enabled: boolean) => {
-    if (advancing || !currentMode || currentMode === "shirazu") return;
-    setNextMode(currentMode);
-    setNextKumo(enabled);
-    setThemeBackStep("mode");
-    openThemeForNext();
+  const backFromKumo = () => {
+    if (advancing) return;
+    if (kumoBackStep === "mode") {
+      setPickerStep("mode");
+      return;
+    }
+    closePickers();
   };
 
   const selectShirazuStyle = (style: ShirazuStyle) => {
@@ -360,10 +385,20 @@ export function RevealPhase({
   useEffect(() => {
     if (!canRematch || !hostPickingTheme || restoredPicker.current) return;
     restoredPicker.current = true;
-    setNextMode(null);
     setThemeDraft(theme.trim().slice(0, THEME_MAX_LENGTH));
+    if (
+      !isSolo &&
+      (currentMode === "haiku" || currentMode === "tanka")
+    ) {
+      setNextMode(currentMode);
+      setNextKumo(false);
+      setKumoBackStep("closed");
+      setPickerStep("kumo");
+      return;
+    }
+    setNextMode(null);
     setPickerStep("theme");
-  }, [canRematch, hostPickingTheme, theme]);
+  }, [canRematch, currentMode, hostPickingTheme, isSolo, theme]);
 
   useEffect(() => {
     if (!pickingTheme) return;
@@ -427,23 +462,6 @@ export function RevealPhase({
       )}
     </>
   );
-
-  if (!canRematch && hostPickingTheme) {
-    return (
-      <div className="mx-auto flex min-h-[calc(100dvh-1rem)] w-full max-w-md flex-col items-center justify-center gap-8 px-4">
-        <p className="text-center text-xl tracking-[0.28em] md:text-3xl">
-          亭主が次の宴を準備しています
-        </p>
-        <button
-          type="button"
-          onClick={onHome}
-          className="brush-btn-outline w-full max-w-xs px-4 py-3 text-sm tracking-widest"
-        >
-          玄関へ戻る
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 md:max-w-3xl md:gap-8">
@@ -703,7 +721,7 @@ export function RevealPhase({
                 >
                   {isSolo ? "もう一度詠む" : "再び宴を開く"}
                 </button>
-                {alternateModes.length > 0 || otherShirazuStyle || canFlipKumo ? (
+                {alternateModes.length > 0 || otherShirazuStyle ? (
                   <button
                     type="button"
                     onClick={openModePicker}
@@ -793,20 +811,41 @@ export function RevealPhase({
                       {SHIRAZU_STYLE_LABEL[otherShirazuStyle]}
                     </button>
                   ) : null}
-                  {canFlipKumo ? (
-                    <button
-                      type="button"
-                      disabled={advancing}
-                      onClick={() => selectKumoVariant(!kumoGakure)}
-                      className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
-                    >
-                      {kumoGakure ? "そのまま詠む" : "雲隠れ"}
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     disabled={advancing}
                     onClick={closePickers}
+                    className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
+                  >
+                    戻る
+                  </button>
+                </div>
+              ) : pickerStep === "kumo" &&
+                (nextMode === "haiku" || nextMode === "tanka") ? (
+                <div className="flex flex-col gap-2">
+                  <p className="py-1 text-center text-sm tracking-widest text-black/55">
+                    {MODE_LABEL[nextMode]}でどう詠む？
+                  </p>
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={() => selectKumoChoice(false)}
+                    className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                  >
+                    通常{MODE_LABEL[nextMode]}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={() => selectKumoChoice(true)}
+                    className="brush-btn-outline w-full px-4 py-3 text-base tracking-[0.25em] md:py-[clamp(0.75rem,2dvh,1rem)]"
+                  >
+                    雲隠れ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={advancing}
+                    onClick={backFromKumo}
                     className="py-1 text-sm tracking-widest text-black/45 underline-offset-4 hover:underline"
                   >
                     戻る
@@ -843,6 +882,31 @@ export function RevealPhase({
           )}
         </div>
       )}
+
+      {typeof document !== "undefined" && !canRematch && hostPickingTheme
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="次の宴の準備"
+            >
+              <section className="brush-box w-full max-w-sm bg-white p-5">
+                <p className="text-center text-lg tracking-[0.18em] md:text-xl">
+                  亭主が次の宴を準備しています
+                </p>
+                <button
+                  type="button"
+                  onClick={onHome}
+                  className="brush-btn-outline mt-5 w-full px-4 py-3 text-sm tracking-widest"
+                >
+                  玄関へ戻る
+                </button>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {shareOpen && previewUrl && (
         <div

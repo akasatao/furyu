@@ -580,7 +580,10 @@ export async function leaveOnlineRoom(options: {
   } catch {
     // 部屋が既に無い場合はそのまま退出扱い
   }
-  if (snapshot?.spectators.some((p) => p.id === options.playerId)) {
+  const leavingSpectator = snapshot?.spectators.find(
+    (p) => p.id === options.playerId,
+  );
+  if (leavingSpectator && !leavingSpectator.isHost && !options.isHost) {
     await deletePlayerRow(options.roomId, options.playerId);
     return;
   }
@@ -796,6 +799,74 @@ async function rememberBan(
   if (error && isMissingColumn(error, "banned_player_ids")) {
     throw new Error(
       "超破門の準備がまだです。Supabase で banned_player_ids を追加してください。",
+    );
+  }
+  if (error) throw error;
+}
+
+/** 待機中に、自分だけ連衆と観戦を入れ替える */
+export async function setLobbyRole(options: {
+  roomId: string;
+  playerId: string;
+  asSpectator: boolean;
+}): Promise<OnlineRoomSnapshot> {
+  const snapshot = await loadRoomSnapshot(options.roomId);
+  if (snapshot.room.phase !== "lobby") {
+    throw new Error("待機の間だけ席を移れます。");
+  }
+  const me =
+    snapshot.players.find((p) => p.id === options.playerId) ??
+    snapshot.spectators.find((p) => p.id === options.playerId);
+  if (!me) throw new Error("この和室にいません。");
+
+  const watching = snapshot.spectators.some((p) => p.id === options.playerId);
+  if (options.asSpectator === watching) return snapshot;
+
+  if (options.asSpectator) {
+    if (modeAllowsSolo(snapshot.room.mode) && snapshot.room.max_players <= 1) {
+      throw new Error("ひとりで詠む和室は観戦できません。");
+    }
+    await updateMemberSeat(options.roomId, options.playerId, {
+      role: "spectator",
+      seat: -1,
+      is_host: me.isHost,
+      part_indexes: [],
+    });
+    return loadRoomSnapshot(options.roomId);
+  }
+
+  if (snapshot.players.length >= snapshot.room.max_players) {
+    throw new Error("この和室は定員です。");
+  }
+  const seat = vacantPlayerSeat(snapshot.players, snapshot.room.max_players);
+  await updateMemberSeat(options.roomId, options.playerId, {
+    role: "player",
+    seat,
+    is_host: me.isHost,
+    part_indexes: [],
+  });
+  return loadRoomSnapshot(options.roomId);
+}
+
+async function updateMemberSeat(
+  roomId: string,
+  playerId: string,
+  patch: {
+    role: "player" | "spectator";
+    seat: number;
+    is_host: boolean;
+    part_indexes: number[];
+  },
+): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("room_players")
+    .update(patch)
+    .eq("room_id", roomId)
+    .eq("player_id", playerId);
+  if (error && isMissingRoleColumn(error)) {
+    throw new Error(
+      "観戦の準備がまだです。Supabase で role 列を追加してください。",
     );
   }
   if (error) throw error;
@@ -1481,8 +1552,19 @@ export function leaveRoomOnUnload(options: {
   playerId: string;
   players: Player[];
   watching: boolean;
+  isHost?: boolean;
 }): void {
   if (options.watching) {
+    if (!options.isHost) {
+      deletePlayerOnUnload(options.roomId, options.playerId);
+      return;
+    }
+    const nextHost = [...options.players].sort(byJoinOrder)[0];
+    if (!nextHost) {
+      deleteRoomOnUnload(options.roomId);
+      return;
+    }
+    promoteHostOnUnload(options.roomId, nextHost.id);
     deletePlayerOnUnload(options.roomId, options.playerId);
     return;
   }
@@ -1560,7 +1642,16 @@ export async function handOverAndRemove(options: {
   const supabase = getSupabase();
 
   if (!leaver) {
-    if (snapshot.spectators.some((p) => p.id === options.leaverId)) {
+    const spectator = snapshot.spectators.find((p) => p.id === options.leaverId);
+    if (spectator) {
+      if (spectator.isHost || snapshot.room.host_id === options.leaverId) {
+        const nextHost = [...snapshot.players].sort(byJoinOrder)[0];
+        if (!nextHost) {
+          await closeOnlineRoom(options.roomId);
+          return;
+        }
+        await promoteHost(options.roomId, nextHost.id);
+      }
       await deletePlayerRow(options.roomId, options.leaverId);
       return;
     }

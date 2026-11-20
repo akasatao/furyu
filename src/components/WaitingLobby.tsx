@@ -101,6 +101,8 @@ interface WaitingLobbyProps {
   onBack: () => void;
   /** ホームのモード選択へ */
   onLeave: () => void;
+  /** 待機中に、自分だけ連衆と観戦を入れ替える */
+  onSwitchSeat?: () => void;
   /** 亭主が次の一宴に No More TMC を宣言する。宣言済みなら出さない */
   onNoMoreTmc?: () => void;
   noMoreTmc?: boolean;
@@ -124,10 +126,18 @@ export function WaitingLobby({
   onTransferHost,
   onBack,
   onLeave,
+  onSwitchSeat,
   onNoMoreTmc,
   noMoreTmc = false,
 }: WaitingLobbyProps) {
-  const hostName = players.find((p) => p.isHost)?.name;
+  const hostName = [...players, ...spectators].find((p) => p.isHost)?.name;
+  const roomFull = players.length >= maxPlayers;
+  const canSwitch = watching ? !roomFull : true;
+  const switchLabel = watching
+    ? roomFull
+      ? "定員です"
+      : "連衆に加わる"
+    : "観戦する";
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 md:max-w-xl md:gap-5">
@@ -211,6 +221,11 @@ export function WaitingLobby({
                 <div className="min-w-0 flex-1 md:text-lg">
                   <FitText text={p.name} />
                 </div>
+                {p.isHost ? (
+                  <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
+                    亭主
+                  </span>
+                ) : null}
                 <span className="shrink-0 border border-black px-1.5 py-0.5 text-[10px] leading-none tracking-widest">
                   観戦
                 </span>
@@ -234,16 +249,27 @@ export function WaitingLobby({
         </ul>
       </section>
 
+      {onSwitchSeat ? (
+        <button
+          type="button"
+          disabled={busy || !canSwitch}
+          onClick={onSwitchSeat}
+          className="brush-btn-outline w-full shrink-0 px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
+        >
+          {switchLabel}
+        </button>
+      ) : null}
+
       <button
         type="button"
         disabled={!isHost || players.length < ONLINE_MIN_PLAYERS || busy}
         onClick={onStart}
         className="brush-btn w-full shrink-0 px-4 py-3 text-base tracking-[0.25em] md:py-4 md:text-lg"
       >
-        {watching
-          ? "開宴を待っています"
-          : !isHost
-          ? "亭主の開宴を待っています"
+        {!isHost
+          ? watching
+            ? "開宴を待っています"
+            : "亭主の開宴を待っています"
           : busy
             ? "開宴中…"
             : players.length < ONLINE_MIN_PLAYERS

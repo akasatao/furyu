@@ -13,11 +13,8 @@ import {
 import { getSupabase } from "@/lib/supabase/client";
 import { clampText } from "@/lib/utils";
 
-/** 画面を横切る基準時間。長い文も同じ速さで、追いつかない */
-const CROSS_MS = 7500;
-/** 狭い画面は同じ時間だと遅く見えるので、短く横切る */
-const NARROW_CROSS_MS = 2600;
-const NARROW_WIDTH_PX = 768;
+/** 出てから画面外へ消えるまでの時間。長さに関わらず一定で、長い文ほど速く流れる */
+const FLIGHT_MS = 3000;
 const SEND_GAP_MS = 800;
 
 interface FlyerItem {
@@ -33,14 +30,10 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function estimateWidth(name: string, body: string): number {
-  return ([...name].length + [...body].length) * 20 + 32;
-}
-
 function laneMetrics(): { top: number; laneH: number; count: number } {
   const top = 52;
   const bottom = 104;
-  const laneH = 36;
+  const laneH = 44;
   const count = Math.max(
     3,
     Math.min(12, Math.floor((window.innerHeight - top - bottom) / laneH)),
@@ -52,19 +45,17 @@ function laneMetrics(): { top: number; laneH: number; count: number } {
  * 空いている段からランダムに取る。画面に残っている段は避ける。
  * 全部ふさがっているときだけ、最初に空く段を待つ。
  */
-function reserveLane(
-  lanes: number[],
-  width: number,
-): { top: number; duration: number; delay: number } {
+function reserveLane(lanes: number[]): {
+  top: number;
+  duration: number;
+  delay: number;
+} {
   const { top, laneH, count } = laneMetrics();
   if (lanes.length !== count) {
     lanes.length = 0;
     for (let i = 0; i < count; i += 1) lanes.push(0);
   }
-  const crossMs =
-    window.innerWidth < NARROW_WIDTH_PX ? NARROW_CROSS_MS : CROSS_MS;
-  const speed = (window.innerWidth + 180) / crossMs;
-  const duration = (window.innerWidth + width) / speed;
+  const duration = FLIGHT_MS;
   const now = performance.now();
   const free: number[] = [];
   let soonest = 0;
@@ -108,7 +99,7 @@ function Flyer({
     const anim = el.animate(
       [
         { transform: "translate3d(0, 0, 0)" },
-        { transform: `translate3d(${distance}px, 0, 0)` },
+        { transform: `translate3d(-${distance}px, 0, 0)` },
       ],
       {
         duration: item.duration,
@@ -129,15 +120,17 @@ function Flyer({
   return (
     <div
       ref={ref}
-      className="absolute right-full whitespace-nowrap text-lg leading-none md:text-xl"
+      className="absolute left-full flex flex-col items-start whitespace-nowrap"
       style={{
         top: item.top,
         textShadow:
           "0 0 3px #fff, 0 0 3px #fff, 1px 0 #fff, -1px 0 #fff, 0 1px #fff, 0 -1px #fff",
       }}
     >
-      <span className="mr-2 text-[0.72em] tracking-widest">{item.name}</span>
-      {item.body}
+      <span className="text-lg leading-none md:text-xl">{item.body}</span>
+      <span className="mt-px text-[10px] leading-none tracking-wide">
+        {item.name}
+      </span>
     </div>
   );
 }
@@ -181,8 +174,7 @@ export function NicoChat({ roomId, playerId, name }: NicoChatProps) {
       return next;
     });
     if (!fly || prefersReducedMotion()) return;
-    const width = estimateWidth(chat.name, chat.body);
-    const slot = reserveLane(laneFreeRef.current, width);
+    const slot = reserveLane(laneFreeRef.current);
     setFlyers((prev) =>
       [
         ...prev,

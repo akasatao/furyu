@@ -47,6 +47,7 @@ import {
   resetRoomToLobby,
   setHostPickingTheme as saveHostPickingTheme,
   ROOM_HEARTBEAT_MS,
+  setLobbyRole,
   startOnlineGame,
   touchRoom,
   submitOnlineTurn,
@@ -456,7 +457,11 @@ export function GameApp() {
         id,
         (snapshot) => {
           // 連衆が誰もいない／亭主がいない和室は終了扱い（観戦者も退出）
-          if (snapshot.players.length === 0) {
+          // 亭主が観戦席にいるあいだは、連衆が一時的にゼロでも和室を残す
+          const hostInRoom =
+            snapshot.players.some((p) => p.isHost) ||
+            snapshot.spectators.some((p) => p.isHost);
+          if (snapshot.players.length === 0 && !hostInRoom) {
             ejectRef.current("和室が閉じました");
             return;
           }
@@ -472,7 +477,7 @@ export function GameApp() {
           if (
             (snapshot.room.phase === "lobby" ||
               snapshot.room.phase === "writing") &&
-            !snapshot.players.some((p) => p.isHost)
+            !hostInRoom
           ) {
             ejectRef.current("亭主が退出しました");
             return;
@@ -488,11 +493,15 @@ export function GameApp() {
             const nextPlayerIds = new Set(
               snapshot.players.map((p) => p.id),
             );
+            const nextSpectatorIds = new Set(
+              snapshot.spectators.map((p) => p.id),
+            );
             const kicked = kickedIdsRef.current;
             const leavers = prevPlayers.filter(
               (p) =>
                 p.id !== self &&
                 !nextPlayerIds.has(p.id) &&
+                !nextSpectatorIds.has(p.id) &&
                 !kicked.has(p.id),
             );
             for (const id of [...kicked]) {
@@ -542,8 +551,12 @@ export function GameApp() {
           const spectatorLeave = spectatorsRef.current.some(
             (p) => p.id === leaverId,
           );
+          const hostId =
+            playersNow.find((p) => p.isHost)?.id ??
+            spectatorsRef.current.find((p) => p.isHost)?.id ??
+            null;
           const processor = spectatorLeave
-            ? (playersNow.find((p) => p.isHost)?.id ?? null)
+            ? hostId
             : leaveProcessorId(playersNow, leaverId);
           if (!processor || processor !== myIdRef.current) return;
           void handOverAndRemove({ roomId: id, leaverId }).catch((error) => {
@@ -584,6 +597,9 @@ export function GameApp() {
         playerId: myId,
         players: playersRef.current,
         watching: spectatorsRef.current.some((p) => p.id === myId),
+        isHost:
+          playersRef.current.some((p) => p.id === myId && p.isHost) ||
+          spectatorsRef.current.some((p) => p.id === myId && p.isHost),
       });
     };
     window.addEventListener("pagehide", onPageHide);
@@ -923,7 +939,9 @@ export function GameApp() {
           clearSubscription();
           // ローカル一人はネット退出不要
           if (roomId && myId && !options.skipLeave) {
-            const me = players.find((p) => p.id === myId);
+            const me =
+              players.find((p) => p.id === myId) ??
+              spectators.find((p) => p.id === myId);
             try {
               await leaveOnlineRoom({
                 roomId,
@@ -1041,6 +1059,24 @@ export function GameApp() {
 
   const handleLobbyBack = async () => {
     await leaveRoomAndGoHome(lobbyBackStepRef.current);
+  };
+
+  const handleSwitchSeat = async () => {
+    if (!roomId || !myId || busy) return;
+    setBusy(true);
+    setErrorMessage("");
+    try {
+      const snapshot = await setLobbyRole({
+        roomId,
+        playerId: myId,
+        asSpectator: !watching,
+      });
+      applySnapshot(snapshot);
+    } catch (error) {
+      setErrorMessage((error as Error).message || "席を移れませんでした。");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleStartGame = async () => {
@@ -1341,8 +1377,11 @@ export function GameApp() {
   };
 
   const me = useMemo(
-    () => players.find((p) => p.id === myId) ?? null,
-    [players, myId],
+    () =>
+      players.find((p) => p.id === myId) ??
+      spectators.find((p) => p.id === myId) ??
+      null,
+    [players, spectators, myId],
   );
 
   const handleAdvanceReveal = async () => {
@@ -1533,6 +1572,9 @@ export function GameApp() {
               onLeave={() => {
                 void handleLeave();
               }}
+              onSwitchSeat={() => {
+                void handleSwitchSeat();
+              }}
               onNoMoreTmc={() => {
                 void handleNoMoreTmc();
               }}
@@ -1621,7 +1663,7 @@ export function GameApp() {
             </ViewportFit>
           )}
 
-        {phase === "writing" && !watching && roomId && me?.isHost && (
+        {phase === "writing" && roomId && me?.isHost && (
           <KickMenu
             players={players}
             spectators={spectators}
@@ -1662,10 +1704,13 @@ export function GameApp() {
                 void handleAdvanceReveal();
               }}
               canRematch={
-                !watching &&
-                (Boolean(me?.isHost) || (!roomId && players.length === 1))
+                Boolean(me?.isHost) ||
+                (!watching && !roomId && players.length === 1)
               }
-              hostPresent={players.some((p) => p.isHost)}
+              hostPresent={
+                players.some((p) => p.isHost) ||
+                spectators.some((p) => p.isHost)
+              }
               hostPickingTheme={hostPickingTheme}
               isSolo={players.length === 1}
               playerCount={players.length}
