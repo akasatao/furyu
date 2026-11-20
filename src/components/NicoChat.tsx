@@ -13,9 +13,16 @@ import {
 import { getSupabase } from "@/lib/supabase/client";
 import { clampText } from "@/lib/utils";
 
-/** 出てから画面外へ消えるまでの時間。長さに関わらず一定で、長い文ほど速く流れる */
-const FLIGHT_MS = 3000;
+/** 出てから画面外へ消えるまでの時間。長さでは変えず、長い文ほど速く流れる */
+const PHONE_FLIGHT_MS = 3000;
+const DESKTOP_FLIGHT_MS = 5000;
+/** Tailwind の md と同じ。これ未満をスマホとする */
+const DESKTOP_MIN_PX = 768;
 const SEND_GAP_MS = 800;
+
+function flightMs(): number {
+  return window.innerWidth < DESKTOP_MIN_PX ? PHONE_FLIGHT_MS : DESKTOP_FLIGHT_MS;
+}
 
 interface FlyerItem {
   id: string;
@@ -55,7 +62,7 @@ function reserveLane(lanes: number[]): {
     lanes.length = 0;
     for (let i = 0; i < count; i += 1) lanes.push(0);
   }
-  const duration = FLIGHT_MS;
+  const duration = flightMs();
   const now = performance.now();
   const free: number[] = [];
   let soonest = 0;

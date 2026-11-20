@@ -1590,7 +1590,6 @@ export function GameApp() {
               theme={theme}
               shirazuStyle={shirazuStyle}
               kumoGakure={kumoGakure}
-              myId={myId}
               note={
                 isLineTurn(turn) && writer
                   ? `${writer.name}が書いています`
@@ -1759,13 +1758,23 @@ export function GameApp() {
       {banished && (
         <div
           role="alert"
-          className="pointer-events-none fixed inset-0 z-[45] flex items-center justify-center"
+          className="pointer-events-none fixed inset-0 z-[45] flex items-center justify-center overflow-hidden"
         >
           <p
-            className="text-8xl tracking-[0.3em] md:text-[12rem]"
+            className={
+              banishWord.length >= 3
+                ? "max-w-full whitespace-nowrap text-center leading-none tracking-[0.12em]"
+                : "whitespace-nowrap text-center text-8xl leading-none tracking-[0.3em] md:text-[12rem]"
+            }
             style={{
               textShadow:
                 "0 0 12px #fff, 0 0 24px #fff, 0 0 4px #fff, 0 0 2px #fff",
+              ...(banishWord.length >= 3
+                ? {
+                    fontSize:
+                      "clamp(2rem, calc((100vw - 2rem) / 3.5), 10rem)",
+                  }
+                : null),
             }}
           >
             {banishWord}

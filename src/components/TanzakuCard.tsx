@@ -77,7 +77,7 @@ export function TanzakuCard({
   return (
     <>
       <article
-        className={`tanzaku relative flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[min(22rem,42dvh)] md:px-5 md:py-[clamp(1rem,3dvh,2rem)] ${
+        className={`tanzaku relative mx-auto flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[min(22rem,42dvh)] md:px-5 md:py-[clamp(1rem,3dvh,2rem)] ${
           canPeekPoem ? "cursor-pointer" : ""
         }`}
         data-write-ms={still ? undefined : totalWriteMs}

@@ -651,7 +651,10 @@ export function RevealPhase({
             }`}
           >
             {poems.map((poem) => (
-              <div key={`capture-bulk-${poem.id}`} className="w-[22rem]">
+              <div
+                key={`capture-bulk-${poem.id}`}
+                className="w-[15rem] md:w-[min(22rem,42dvh)]"
+              >
                 <TanzakuCard poem={poem} still />
               </div>
             ))}
@@ -693,7 +696,7 @@ export function RevealPhase({
               ref={(el) => {
                 poemCaptureRefs.current.set(poem.id, el);
               }}
-              className="mb-8 w-[22rem] bg-white p-4"
+              className="mb-8 w-[15rem] bg-white p-4 md:w-[min(22rem,42dvh)]"
             >
               <p className="mb-3 text-center text-lg tracking-[0.35em]">
                 {shirazuOwnerLabel(poem, myId) ?? "名無しの句"}
@@ -824,7 +827,7 @@ export function RevealPhase({
                 (nextMode === "haiku" || nextMode === "tanka") ? (
                 <div className="flex flex-col gap-2">
                   <p className="py-1 text-center text-sm tracking-widest text-black/55">
-                    {MODE_LABEL[nextMode]}でどう詠む？
+                    {MODE_LABEL[nextMode]}はどう詠む？
                   </p>
                   <button
                     type="button"

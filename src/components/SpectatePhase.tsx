@@ -1,12 +1,7 @@
 "use client";
 
 import { ShirazuLineSlots } from "@/components/ShirazuLineSlots";
-import {
-  hiddenPartMark,
-  MODE_LABEL,
-  PART_LABELS,
-  roomModeLabel,
-} from "@/lib/constants";
+import { MODE_LABEL, PART_LABELS, roomModeLabel } from "@/lib/constants";
 import { SHIRAZU_LINE_TARGETS } from "@/lib/shirazu";
 import { shirazuOwnerLabel } from "@/lib/utils";
 import type { Poem, ShirazuStyle } from "@/types/game";
@@ -15,9 +10,8 @@ interface SpectatePhaseProps {
   poems: Poem[];
   theme?: string;
   shirazuStyle?: ShirazuStyle;
-  /** 俳句・短歌の雲隠れ。書いた句は？で出す */
+  /** 見出し用。観戦は雲隠れでも書いた句をそのまま見る */
   kumoGakure?: boolean;
-  myId?: string;
   /** 俳句・短歌で、いま書いている人 */
   note?: string;
   busy?: boolean;
@@ -100,15 +94,7 @@ function ShirazuGallery({
   );
 }
 
-function LineCard({
-  poem,
-  kumo,
-  viewerId,
-}: {
-  poem: Poem;
-  kumo: boolean;
-  viewerId: string;
-}) {
+function LineCard({ poem }: { poem: Poem }) {
   const labels = PART_LABELS[poem.mode];
   return (
     <article className="tanzaku relative mx-auto flex w-full max-w-[15rem] flex-col items-center px-3 py-5 md:max-w-[min(22rem,42dvh)] md:px-5 md:py-8">
@@ -126,11 +112,7 @@ function LineCard({
             className={`${lineGap(i, poem.lines.length - 1)} block min-h-[1em]`}
           >
             {line?.text ? (
-              kumo && line.authorId !== viewerId ? (
-                hiddenPartMark(poem.mode, i)
-              ) : (
-                line.text
-              )
+              line.text
             ) : (
               <span className="text-black/25">……</span>
             )}
@@ -147,7 +129,6 @@ export function SpectatePhase({
   theme = "",
   shirazuStyle = "strict",
   kumoGakure = false,
-  myId = "",
   note = "",
   busy = false,
   onLeave,
@@ -192,7 +173,7 @@ export function SpectatePhase({
       ) : isShirazu ? (
         <ShirazuGallery poems={poems} free={free} />
       ) : (
-        <LineCard poem={poems[0]} kumo={kumoGakure} viewerId={myId} />
+        <LineCard poem={poems[0]} />
       )}
     </div>
   );

@@ -537,7 +537,7 @@ export function HomeScreen({
                   ref={(el) => {
                     poemCaptureRefs.current.set(entry.id, el);
                   }}
-                  className="mb-8 w-[22rem] bg-white p-4"
+                  className="mb-8 w-[15rem] bg-white p-4 md:w-[min(22rem,42dvh)]"
                 >
                   {poem.mode === "shirazu" ? (
                     <p className="mb-3 text-center text-lg tracking-[0.35em]">
