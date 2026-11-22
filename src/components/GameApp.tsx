@@ -287,7 +287,7 @@ export function GameApp() {
   }, []);
 
   const rememberPoems = useCallback(
-    (nextPoems: Poem[], poemTheme?: string) => {
+    (nextPoems: Poem[], poemTheme?: string, kumo?: boolean) => {
       if (nextPoems.length === 0) return;
       const key = nextPoems
         .map((p) => p.id)
@@ -297,11 +297,12 @@ export function GameApp() {
       if (!key || historySavedKeyRef.current === key) return;
       const updated = appendPoemsToHistory(nextPoems, {
         theme: poemTheme ?? theme,
+        kumoGakure: kumo ?? kumoGakure,
       });
       historySavedKeyRef.current = key;
       setPoemHistory(updated);
     },
-    [theme],
+    [kumoGakure, theme],
   );
 
   const handleNicknameChange = useCallback((value: string) => {
@@ -370,7 +371,11 @@ export function GameApp() {
       setHostPickingTheme(isHostPickingTheme(snapshot.room.turn));
       setPhase(snapshot.room.phase);
       if (snapshot.room.phase === "reveal" && nextPoems.length > 0) {
-        rememberPoems(nextPoems, snapshot.room.theme);
+        rememberPoems(
+          nextPoems,
+          snapshot.room.theme,
+          snapshot.room.kumo_gakure === true,
+        );
       }
       if (snapshot.room.phase === "lobby" || snapshot.room.phase === "writing") {
         historySavedKeyRef.current = "";
@@ -1260,7 +1265,7 @@ export function GameApp() {
             setPoems(result.poems);
             setTurn(null);
             setPhase("reveal");
-            rememberPoems(result.poems);
+            rememberPoems(result.poems, undefined, kumoGakure);
           });
           await startRevealWriting();
         } else {

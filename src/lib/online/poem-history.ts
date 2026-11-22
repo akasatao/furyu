@@ -23,6 +23,8 @@ export type PoemHistoryEntry = {
   ownerName?: string;
   theme?: string;
   shirazuStyle?: ShirazuStyle;
+  /** 俳句・短歌の雲隠れ。旧履歴には無い */
+  kumoGakure?: boolean;
 };
 
 function readRaw(): PoemHistoryEntry[] {
@@ -56,7 +58,7 @@ export function removePoemFromHistory(entryId: string): PoemHistoryEntry[] {
 /** 完成した句を履歴へ追記。既に同じ poem.id があれば何もしない */
 export function appendPoemsToHistory(
   poems: Poem[],
-  options?: { theme?: string },
+  options?: { theme?: string; kumoGakure?: boolean },
 ): PoemHistoryEntry[] {
   if (poems.length === 0) return readRaw();
 
@@ -68,6 +70,9 @@ export function appendPoemsToHistory(
   const batchId = uid("batch");
   const savedAt = new Date().toISOString();
   const theme = options?.theme?.trim() || undefined;
+  const kumoGakure =
+    options?.kumoGakure === true &&
+    fresh.some((poem) => poem.mode === "haiku" || poem.mode === "tanka");
   const additions: PoemHistoryEntry[] = fresh.map((poem) => ({
     id: poem.id,
     batchId,
@@ -77,6 +82,8 @@ export function appendPoemsToHistory(
     ownerName: poem.ownerName,
     theme,
     shirazuStyle: poem.shirazuStyle,
+    kumoGakure:
+      kumoGakure && (poem.mode === "haiku" || poem.mode === "tanka"),
     lines: poem.lines.map((line) => ({
       text: line?.text ?? "？",
       units: line?.units,

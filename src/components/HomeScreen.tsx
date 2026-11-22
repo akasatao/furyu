@@ -466,10 +466,15 @@ export function HomeScreen({
               ) : null}
               {poemHistory.map((entry) => {
                 const poem = historyEntryToPoem(entry);
-                const title =
+                const modeLabel = roomModeLabel(
+                  entry.mode,
+                  entry.shirazuStyle ?? "strict",
+                  entry.kumoGakure === true,
+                );
+                const owner =
                   poem.mode === "shirazu"
-                    ? (shirazuOwnerLabel(poem, myId) ?? MODE_LABEL.shirazu)
-                    : MODE_LABEL[poem.mode];
+                    ? shirazuOwnerLabel(poem, myId)
+                    : "";
                 return (
                   <div
                     key={entry.id}
@@ -477,7 +482,8 @@ export function HomeScreen({
                   >
                     <p className="text-center text-xs tracking-widest text-black/45">
                       {formatHistoryDate(entry.savedAt)}
-                      {title ? `　${title}` : ""}
+                      {modeLabel ? `　${modeLabel}` : ""}
+                      {owner ? `　${owner}` : ""}
                       {entry.theme ? `　お題：${entry.theme}` : ""}
                     </p>
                     <TanzakuCard
