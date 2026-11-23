@@ -32,6 +32,23 @@
     user-select: text !important;
     -webkit-touch-callout: default;
   }
+
+  /* 縦書きの伸ばし棒と波線を縦にする */
+  .choon-v {
+    font-feature-settings: "vert" off;
+    text-orientation: sideways;
+  }
+
+  /* 短歌は五列。短冊の幅に合わせて字を収める */
+  .tanzaku {
+    container-type: inline-size;
+  }
+
+  .tanzaku-tanka {
+    font-size: clamp(1rem, 10.4cqi, 1.75rem);
+    line-height: 1.55;
+    letter-spacing: 0.28em;
+  }
 }
 
 @keyframes toast-drop-in {

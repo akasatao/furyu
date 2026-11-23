@@ -10,15 +10,18 @@ import {
 /**
  * 子の自然高さが親に収まるよう、全体を均一に縮小する（上基準）。
  * minScale が 1 以上のときだけ縮小せず、収まりきらなければスクロールする。
+ * fill のときは縮めず、子が親の高さいっぱいを使う（中の領域でスクロールする）。
  */
 export function ViewportFit({
   children,
   className = "",
   minScale = 0.68,
+  fill = false,
 }: {
   children: ReactNode;
   className?: string;
   minScale?: number;
+  fill?: boolean;
 }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -27,6 +30,11 @@ export function ViewportFit({
   const [scrollable, setScrollable] = useState(false);
 
   useLayoutEffect(() => {
+    if (fill) {
+      setScale(1);
+      setScrollable(false);
+      return;
+    }
     const outer = outerRef.current;
     const inner = innerRef.current;
     if (!outer || !inner) return;
@@ -75,7 +83,7 @@ export function ViewportFit({
     ro.observe(inner);
     update();
     return () => ro.disconnect();
-  }, [minScale]);
+  }, [fill, minScale]);
 
   const fitted = scale < 1 && !scrollable;
 
@@ -83,12 +91,18 @@ export function ViewportFit({
     <div
       ref={outerRef}
       className={`flex min-h-0 w-full flex-1 flex-col overflow-x-hidden ${
-        scrollable ? "overflow-y-auto overscroll-contain" : "overflow-hidden"
+        fill || !scrollable
+          ? "overflow-hidden"
+          : "overflow-y-auto overscroll-contain"
       } ${className}`}
     >
       <div
         ref={innerRef}
-        className="w-full origin-top"
+        className={
+          fill
+            ? "flex h-full min-h-0 w-full flex-1 flex-col"
+            : "w-full origin-top"
+        }
         style={
           fitted
             ? {

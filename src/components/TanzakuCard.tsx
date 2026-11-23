@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChoonText } from "@/components/ChoonText";
 import { ShirazuLineSlots } from "@/components/ShirazuLineSlots";
 import { TextPeekDialog } from "@/components/TextPeekDialog";
 import { MODE_LABEL, PART_LABELS, PART_TARGETS } from "@/lib/constants";
@@ -39,6 +40,7 @@ export function TanzakuCard({
 }: TanzakuCardProps) {
   const labels = PART_LABELS[poem.mode];
   const isShirazu = poem.mode === "shirazu";
+  const tanka = poem.mode === "tanka";
   const free = isShirazu && poem.shirazuStyle === "free";
   const ownerLabel = shirazuOwnerLabel(poem, viewerId);
   const showAnonymous = (anonymous || isShirazu) && !ownerLabel;
@@ -128,7 +130,9 @@ export function TanzakuCard({
               className={
                 free
                   ? "pointer-events-none text-[1.35rem] leading-none tracking-normal [writing-mode:vertical-rl] md:text-[clamp(1.25rem,3dvh,1.75rem)]"
-                  : "text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
+                  : tanka
+                    ? "tanzaku-tanka max-w-full [writing-mode:vertical-rl]"
+                    : "text-[1.35rem] leading-[2] tracking-[0.35em] [writing-mode:vertical-rl] md:text-[clamp(1.35rem,3.2dvh,2rem)] md:leading-[2.15] md:tracking-[0.4em]"
               }
               lang="ja"
             >
@@ -177,7 +181,7 @@ export function TanzakuCard({
                         }
                       />
                     ) : (
-                      (line?.text ?? "？")
+                      <ChoonText text={line?.text ?? "？"} />
                     )}
                   </span>
                 );

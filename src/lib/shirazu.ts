@@ -8,8 +8,16 @@ export const SHIRAZU_MORA_PER_POEM = 17;
 /** @deprecated 互換用エイリアス */
 export const SHIRAZU_CHARS_PER_POEM = SHIRAZU_MORA_PER_POEM;
 
+/** 波線。入力の 〜 も同じ印に揃える */
+export const SHIRAZU_WAVE = "～";
+const WAVE_DASHES = new Set(["～", "〜", "∼"]);
+
+export function isWaveDash(ch: string): boolean {
+  return WAVE_DASHES.has(ch);
+}
+
 /** 単独で一音になる記号・促音・撥音 */
-const SOLO_MORA = new Set(["っ", "ん", "ー"]);
+const SOLO_MORA = new Set(["っ", "ん", "ー", SHIRAZU_WAVE]);
 
 /** よく使う拗音（二文字一音） */
 const YOON_UNITS = [
@@ -55,8 +63,8 @@ const YOON_UNITS = [
   "でゅ",
 ] as const;
 
-const YOON_SET = new Set<string>(YOON_UNITS);
-const YOON_BASES = new Set([...YOON_UNITS].map((u) => [...u][0]));
+/** 前の仮名に付いて一音になる小書き。っは促音なので付けない */
+const SMALL_KANA_ATTACH = /^[ぁぃぅぇぉゃゅょゎゕゖ]$/;
 
 export interface ShirazuMoraLocation {
   lineIndex: number;
@@ -161,6 +169,7 @@ function normalizeStrictChar(ch: string): string | null {
     return String.fromCharCode(ch.charCodeAt(0) - 0x60);
   }
   if (isKanji(ch)) return null;
+  if (isWaveDash(ch)) return SHIRAZU_WAVE;
   if (ch === "ー" || /[ぁ-ん]/.test(ch) || isLatinLetter(ch)) {
     return ch;
   }
@@ -184,13 +193,17 @@ export function toHiraganaOnly(text: string): string {
     .join("");
 }
 
-function isYoonPair(base: string, small: string): boolean {
-  return YOON_SET.has(base + small);
+/** ぽょ・きゃ・ふぁのように、仮名＋小書きで一音 */
+function isSmallKanaMora(base: string, small: string): boolean {
+  if (!SMALL_KANA_ATTACH.test(small)) return false;
+  if (SOLO_MORA.has(base) || base === "っ") return false;
+  if (SMALL_KANA_ATTACH.test(base)) return false;
+  return /[ぁ-ん]/.test(base);
 }
 
 /**
  * 入力中の下書きを最大一単位まで残す（しっかり風流）。
- * 一音／拗音／っ（単体）／英字。漢字不可。
+ * 一音／仮名＋小書き／っ（単体）／英字／～。漢字不可。
  */
 export function clampShirazuDraft(raw: string): string {
   const allowed = toAllowedShirazuChars(raw);
@@ -203,34 +216,28 @@ export function clampShirazuDraft(raw: string): string {
   if (isLatinLetter(first)) return first;
 
   // 先頭が小書き（っ以外）なら捨てる
-  if (/[ぁぃぅぇぉゃゅょゎ]/.test(first)) return "";
+  if (SMALL_KANA_ATTACH.test(first)) return "";
 
   // っは単体のみ
   if (first === "っ") return first;
 
-  if (SOLO_MORA.has(first) || !YOON_BASES.has(first)) {
-    return first;
-  }
-
-  if (second && isYoonPair(first, second)) {
+  if (second && isSmallKanaMora(first, second)) {
     return first + second;
   }
   return first;
 }
 
-/** 提出可能な単位か（一音／拗音／っ単体／英字） */
+/** 提出可能な単位か（一音／仮名＋小書き／っ単体／英字／～） */
 export function isValidShirazuMora(raw: string): boolean {
   const unit = clampShirazuDraft(raw);
   if (!unit) return false;
   const chars = [...unit];
   if (chars.length === 1) {
-    if (isLatinLetter(chars[0])) return true;
-    return (
-      /[ぁ-んー]/.test(chars[0]) && !/[ぁぃぅぇぉゃゅょゎ]/.test(chars[0])
-    );
+    if (isLatinLetter(chars[0]) || chars[0] === SHIRAZU_WAVE) return true;
+    return /[ぁ-んー]/.test(chars[0]) && !SMALL_KANA_ATTACH.test(chars[0]);
   }
   if (chars.length === 2) {
-    return isYoonPair(chars[0], chars[1]) && moraCountFromKana(unit) === 1;
+    return isSmallKanaMora(chars[0], chars[1]) && moraCountFromKana(unit) === 1;
   }
   return false;
 }
@@ -275,16 +282,16 @@ export function splitShirazuLineIntoMoras(line: string): string[] {
       i += 1;
       continue;
     }
-    if (b && isYoonPair(a, b)) {
+    if (b && isSmallKanaMora(a, b)) {
       units.push(a + b);
       i += 2;
       continue;
     }
-    if (/[ぁぃぅぇぉゃゅょゎ]/.test(a)) {
+    if (SMALL_KANA_ATTACH.test(a)) {
       i += 1;
       continue;
     }
-    if (a === "ー" || /[ぁ-ん]/.test(a)) {
+    if (a === "ー" || a === SHIRAZU_WAVE || /[ぁ-ん]/.test(a)) {
       units.push(a);
     }
     i += 1;

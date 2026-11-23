@@ -8,13 +8,13 @@ const BACK_SRC = "/audio/back.mp3";
 const BANISH_SRC = "/audio/banish.mp3";
 const BANISH_VICTIM_SRC = "/audio/banish-victim.mp3";
 
-function playSrc(src: string): void {
+function playSrc(src: string, gain = 1): void {
   if (typeof window === "undefined") return;
   const volume = effectiveAudioVolume();
   if (volume <= 0) return;
   try {
     const audio = new Audio(src);
-    audio.volume = volume;
+    audio.volume = Math.min(1, volume * gain);
     void audio.play().catch(() => {
       // 自動再生制限など。次の操作で鳴る
     });
@@ -67,7 +67,7 @@ export function playBanishSound(): void {
   playSrc(BANISH_SRC);
 }
 
-/** 破門された本人のショック音 */
+/** 破門された本人のショック音。他の効果音より一段大きく */
 export function playBanishVictimSound(): void {
-  playSrc(BANISH_VICTIM_SRC);
+  playSrc(BANISH_VICTIM_SRC, 1.5);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { assignPartIndexes, shufflePlayers, writerForStep } from "@/lib/roles";
+import { assignPartIndexes, orderPlayersForVerse, writerForStep } from "@/lib/roles";
 import { getSupabase } from "@/lib/supabase/client";
 import {
   assignShirazuOwners,
@@ -906,11 +906,11 @@ export async function startOnlineGame(options: {
     throw new Error("二人以上揃うまで開宴できません。");
   }
 
-  // 俳句・短歌は入室順のまま上の句・中の句が固定しないよう、開宴のたびに並び替える
+  // 俳句・短歌は、直前と同じ句が続かない並びで開宴する
   const orderedPlayers =
     snapshot.room.mode === "shirazu"
       ? snapshot.players
-      : shufflePlayers(snapshot.players);
+      : orderPlayersForVerse(snapshot.players, snapshot.room.mode);
   const count = orderedPlayers.length;
   const parts = assignPartIndexes(count, snapshot.room.mode);
   const supabase = getSupabase();
@@ -1280,10 +1280,13 @@ export async function resetRoomToLobby(options: {
   const maxPlayers = PLAYER_COUNT_RANGE[mode].max;
 
   const supabase = getSupabase();
-  await supabase
-    .from("room_players")
-    .update({ part_indexes: [] })
-    .eq("room_id", options.roomId);
+  // 同じモードの再宴では、直前の担当を残して同じ句の連続を避ける
+  if (options.mode && options.mode !== snapshot.room.mode) {
+    await supabase
+      .from("room_players")
+      .update({ part_indexes: [] })
+      .eq("room_id", options.roomId);
+  }
 
   await updateRoomRow(options.roomId, {
     phase: "lobby",

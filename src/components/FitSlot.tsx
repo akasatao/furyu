@@ -1,6 +1,8 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
+import { isChoonMark } from "@/components/ChoonText";
+import { isWaveDash, SHIRAZU_WAVE } from "@/lib/shirazu";
 
 interface FitSlotProps {
   text: string;
@@ -131,22 +133,27 @@ export function FitSlot({
         const t =
           chars.length === 1 ? inset : inset + (i / last) * (1 - inset * 2);
         const small = isSmallKana(ch.text);
+        const choon = isChoonMark(ch.text);
+        const wave = isWaveDash(ch.text);
+        const sideways = choon || wave;
         // 斜めの小さい文字では、点を仮名の右上まで上げる
         const markTop =
           chars.length === 2 || chars.length === 3 ? "-0.04em" : "-0.02em";
         return (
           <span
             key={`${i}-${ch.text}-${ch.mark ? "d" : "p"}`}
-            className={`absolute whitespace-nowrap ${small ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
+            className={`absolute whitespace-nowrap ${small || sideways ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
             style={{
               left: `${t * 100}%`,
               top: `${t * 100}%`,
-              transform: small
-                ? `translate(-50%, -50%) scale(${SMALL_KANA_SCALE})`
-                : undefined,
+              transform: sideways
+                ? "translate(-50%, -50%) rotate(90deg)"
+                : small
+                  ? `translate(-50%, -50%) scale(${SMALL_KANA_SCALE})`
+                  : undefined,
             }}
           >
-            {ch.text}
+            {choon ? "ー" : wave ? SHIRAZU_WAVE : ch.text}
             {ch.mark ? (
               chars.length === 1 ? (
                 <span

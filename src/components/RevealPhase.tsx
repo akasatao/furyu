@@ -464,7 +464,13 @@ export function RevealPhase({
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 md:max-w-3xl md:gap-8">
+    <div
+      className={
+        showGallery
+          ? "mx-auto flex h-full min-h-0 w-full max-w-5xl flex-1 flex-col items-center gap-3 md:gap-5"
+          : "mx-auto flex w-full max-w-md flex-col items-center gap-3 md:max-w-3xl md:gap-8"
+      }
+    >
       <header className="shrink-0 space-y-1.5 text-center md:space-y-2">
         <p className="text-xs tracking-[0.35em] text-black/50">披露</p>
         <h2 className="text-xl tracking-widest md:text-4xl">
@@ -484,7 +490,9 @@ export function RevealPhase({
       {isShirazu ? (
         <div
           className={`flex min-h-0 w-full flex-1 flex-col items-center ${
-            showGallery ? "overflow-y-auto" : "overflow-hidden"
+            showGallery
+              ? "overflow-y-auto overscroll-contain px-1 pb-2"
+              : "overflow-hidden"
           }`}
         >
           {waitingToStart && (
@@ -548,53 +556,59 @@ export function RevealPhase({
           )}
 
           {showGallery && (
-            <div className="flex w-full flex-col items-center gap-6 md:gap-[clamp(1.5rem,4dvh,2.5rem)]">
-              {poems.map((poem) => {
-                const replaying = replayingId === poem.id;
-                return (
-                  <div
-                    key={poem.id}
-                    className="flex w-full max-w-[15rem] shrink-0 flex-col items-center gap-2 md:max-w-[min(22rem,42dvh)]"
-                  >
-                    <TanzakuCard
-                      key={
-                        replaying
-                          ? `replay-${poem.id}-${replayNonce}`
-                          : `gallery-${poem.id}`
-                      }
-                      poem={poem}
-                      anonymous
-                      still={!replaying}
-                      writing
-                      viewerId={myId}
-                    />
-                    <div className="flex w-full items-stretch gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => {
-                          void handleOpenPoemShare(poem);
-                        }}
-                        className="brush-btn-outline min-w-0 flex-1 px-3 py-2.5 text-xs tracking-widest text-black/55"
-                      >
-                        {busy && sharingPoemId === poem.id
-                          ? "画像を用意中…"
-                          : "句をシェアする"}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="披露を再生"
-                        onClick={() => {
-                          handleReplayPoem(poem.id);
-                        }}
-                        className="brush-btn-outline flex shrink-0 items-center justify-center px-3 text-black/55"
-                      >
-                        <PlayIcon />
-                      </button>
+            <div className="flex w-full flex-col items-center gap-6 md:gap-8">
+              <div className="grid w-full grid-cols-1 justify-items-center gap-6 md:grid-cols-2 md:gap-x-8 md:gap-y-8">
+                {poems.map((poem, index) => {
+                  const replaying = replayingId === poem.id;
+                  const loneLast =
+                    poems.length % 2 === 1 && index === poems.length - 1;
+                  return (
+                    <div
+                      key={poem.id}
+                      className={`flex w-full max-w-[15rem] shrink-0 flex-col items-center gap-2 md:max-w-[min(22rem,42dvh)] ${
+                        loneLast ? "md:col-span-2" : ""
+                      }`}
+                    >
+                      <TanzakuCard
+                        key={
+                          replaying
+                            ? `replay-${poem.id}-${replayNonce}`
+                            : `gallery-${poem.id}`
+                        }
+                        poem={poem}
+                        anonymous
+                        still={!replaying}
+                        writing
+                        viewerId={myId}
+                      />
+                      <div className="flex w-full items-stretch gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            void handleOpenPoemShare(poem);
+                          }}
+                          className="brush-btn-outline min-w-0 flex-1 px-3 py-2.5 text-xs tracking-widest text-black/55"
+                        >
+                          {busy && sharingPoemId === poem.id
+                            ? "画像を用意中…"
+                            : "句をシェアする"}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="披露を再生"
+                          onClick={() => {
+                            handleReplayPoem(poem.id);
+                          }}
+                          className="brush-btn-outline flex shrink-0 items-center justify-center px-3 text-black/55"
+                        >
+                          <PlayIcon />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
               {poems.length > 1 ? (
                 <button
                   type="button"
@@ -707,14 +721,9 @@ export function RevealPhase({
       </div>
 
       {showActions && (
-        <div className="relative w-full shrink-0">
-          <div
-            className={`flex flex-col gap-2 ${
-              pickerOpen ? "invisible pointer-events-none" : ""
-            }`}
-            aria-hidden={pickerOpen}
-            inert={pickerOpen ? true : undefined}
-          >
+        <div className="w-full shrink-0">
+          {!pickerOpen ? (
+            <div className="flex flex-col gap-2 bg-white">
             {canRematch ? (
               <>
                 <button
@@ -741,8 +750,8 @@ export function RevealPhase({
             ) : null}
             {exitActions}
           </div>
-          {pickerOpen && (
-            <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 bg-white">
+          ) : (
+            <div className="flex flex-col gap-2">
               {pickerStep === "theme" ? (
                 <div className="flex flex-col gap-2">
                   <input

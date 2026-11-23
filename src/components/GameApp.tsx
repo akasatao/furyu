@@ -1430,6 +1430,14 @@ export function GameApp() {
     return getPromptLines(poems[0], turn.stepIndex);
   }, [poems, turn]);
 
+  const relayRevealIndex = isShirazuRevealTurn(turn) ? turn.poemIndex : null;
+  /** リレー披露の一覧。短冊の枠だけをスクロールさせる */
+  const relayGallery =
+    poems[0]?.mode === "shirazu" &&
+    (relayRevealIndex == null
+      ? revealReady
+      : relayRevealIndex >= poems.length);
+
   const draftForUi = isLineTurn(turn)
     ? turn.writerId === myId
       ? localDraft
@@ -1690,7 +1698,7 @@ export function GameApp() {
         )}
 
         {phase === "reveal" && poems.length > 0 && (
-          <ViewportFit minScale={0.72}>
+          <ViewportFit minScale={0.72} fill={relayGallery}>
             <RevealPhase
               poems={poems}
               theme={theme}

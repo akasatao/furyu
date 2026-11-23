@@ -1,5 +1,6 @@
 "use client";
 
+import { ChoonText } from "@/components/ChoonText";
 import { ShirazuLineSlots } from "@/components/ShirazuLineSlots";
 import { MODE_LABEL, PART_LABELS, roomModeLabel } from "@/lib/constants";
 import { SHIRAZU_LINE_TARGETS } from "@/lib/shirazu";
@@ -112,7 +113,7 @@ function LineCard({ poem }: { poem: Poem }) {
             className={`${lineGap(i, poem.lines.length - 1)} block min-h-[1em]`}
           >
             {line?.text ? (
-              line.text
+              <ChoonText text={line.text} />
             ) : (
               <span className="text-black/25">……</span>
             )}

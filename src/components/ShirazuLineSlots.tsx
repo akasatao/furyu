@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
+import { ChoonText } from "@/components/ChoonText";
 import { FitSlot } from "@/components/FitSlot";
 import { FreeSlotPeek } from "@/components/FreeSlotPeek";
 import { shirazuLineSlotUnits } from "@/lib/shirazu";
@@ -78,7 +79,7 @@ export function ShirazuLineSlots({
               key={i}
               className={empty && dimEmpty ? "text-black/30" : "text-black"}
             >
-              {unit}
+              <ChoonText text={unit} />
             </span>
           );
         })}
